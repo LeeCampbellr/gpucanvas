@@ -47,7 +47,6 @@ export function createBase<N extends BaseNode>(
   };
   const unbindInput = bindCameraInput(surface, () => camera, setCamera);
 
-  /** The world rect in view. */
   const view = () => visibleWorldRect(camera, surface.clientWidth, surface.clientHeight);
   /** The topmost node at a world point: the last one added draws on top. */
   const nodeAt = (point: Point): N | null => {

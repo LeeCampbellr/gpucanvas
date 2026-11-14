@@ -560,7 +560,6 @@ export async function createGpuCanvas(
     return { x, y, width, height };
   };
 
-  /** Draws one snapshot region into the atlas. Returns false when it could not. */
   const drawSnapshot = (page: Page, source: Rect | null, slot: AtlasSlot) => {
     try {
       device.queue.drawElementImageToTexture(
@@ -716,7 +715,6 @@ export async function createGpuCanvas(
           rasterized++;
         }
       }
-      /** Crops `rect` (world units) of `node` out of its page into the atlas at `scale`. */
       // The first snapshot at a scale in a frame pays to rasterize the page at that scale;
       // further crops at the same scale are nearly free, so they skip the budget.
       const warm = new Set<number>();

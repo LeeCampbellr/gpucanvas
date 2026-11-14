@@ -25,7 +25,6 @@ export class Page {
   readonly element: HTMLDivElement;
   readonly width: number;
   readonly height: number;
-  /** Nodes currently placed on this page. */
   count = 0;
   /** Has the `drawable` attribute and is rendered; parked pages use `content-visibility: hidden`. */
   drawable = false;
