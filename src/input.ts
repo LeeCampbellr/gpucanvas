@@ -9,7 +9,7 @@ const isSurface = (target: EventTarget | null) =>
   target instanceof Element && target.hasAttribute('data-gpucanvas-surface');
 
 /** Where a pointer event lands on `element`, in its CSS pixels from the top left. */
-export const pointIn = (element: Element, event: MouseEvent): Point => {
+export const pointIn = (element: Element, event: { clientX: number; clientY: number }): Point => {
   const bounds = element.getBoundingClientRect();
   return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
 };
@@ -77,13 +77,8 @@ export function bindCameraInput(
       touch.y = event.clientY;
       const after = pinch();
       if (!before.distance) return;
-      const bounds = element.getBoundingClientRect();
-      const zoomed = zoomAt(
-        getCamera(),
-        before.x - bounds.left,
-        before.y - bounds.top,
-        after.distance / before.distance,
-      );
+      const at = pointIn(element, { clientX: before.x, clientY: before.y });
+      const zoomed = zoomAt(getCamera(), at.x, at.y, after.distance / before.distance);
       onChange({
         ...zoomed,
         x: zoomed.x - (after.x - before.x) / zoomed.zoom,

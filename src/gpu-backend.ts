@@ -1,7 +1,7 @@
 import { Atlas, type AtlasSlot } from './atlas';
 import { captureRegion } from './capture';
 import { createBase, styleNode } from './base';
-import { screenToWorld, visibleWorldRect } from './camera';
+import { screenToWorld } from './camera';
 import { elementInNode, nodeOfElement, rectInNode } from './elements';
 import { effectPad, effectParams, type Effect } from './effects';
 import { CompositeRenderer } from './gpu-renderer';
@@ -820,13 +820,13 @@ export async function createGpuCanvas(
     let onThumbnail = 0;
     for (const node of visible) {
       // Until its snapshot is drawn, a node shows its thumbnail.
-      const base = atlas.isValid(node.slot)
+      const image = atlas.isValid(node.slot)
         ? node.slot
         : atlas.isValid(node.thumb)
           ? node.thumb
           : null;
-      if (base && base !== node.slot) onThumbnail++;
-      const hasSlot = base !== null;
+      if (image && image !== node.slot) onThumbnail++;
+      const hasSlot = image !== null;
       const sharp = node.tiles.length > 0 || (node.preview !== null && atlas.isValid(node.preview));
       const shown = sharp ? 3 : hasSlot ? 2 : 1;
       // Flicker accounting: pixels a node showed last frame and lost this one. A node coming
@@ -840,13 +840,13 @@ export async function createGpuCanvas(
       // An effect that failed to compile is drawn plain, without asking for more frames.
       if (worn && !renderer.effectFailed(worn.effect)) {
         if (worn.effect.animated) effectsMoving = true;
-        if (base && renderer.hasEffect(worn.effect)) {
-          renderer.effectQuad(node.rect, base, worn.effect, worn.pad, worn.params);
+        if (image && renderer.hasEffect(worn.effect)) {
+          renderer.effectQuad(node.rect, image, worn.effect, worn.pad, worn.params);
           continue;
         }
         effectsMoving = true;
       }
-      renderer.quad(node.rect, base);
+      renderer.quad(node.rect, image);
       // Back to front: stale tiles and tiles from an earlier zoom, the preview of a change,
       // then this zoom's fresh tiles.
       const current = (tile: Tile) => tile.scale === detailScale && !tile.stale;
@@ -884,7 +884,7 @@ export async function createGpuCanvas(
     atlas.nextFrame();
     const dpr = canvasDpr();
     const camera = base.camera();
-    const view = visibleWorldRect(camera, canvas.clientWidth, canvas.clientHeight);
+    const view = base.view();
     const moving = start - lastCameraChange < SETTLE_MS;
     planFrame(view, rasterScaleFor(camera.zoom * dpr), camera.zoom * dpr, moving);
 

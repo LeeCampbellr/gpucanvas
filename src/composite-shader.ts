@@ -1,3 +1,6 @@
+/** What a quad draws, in its `info.y`. The shader compares halfway between kinds: they are floats. */
+export const KIND = { snapshot: 0, placeholder: 1, ring: 2 };
+
 /**
  * One instanced quad per visible node: its atlas snapshot, or a placeholder until one exists.
  * Outlines (selection, hover) are quads on top, each a ring just outside an element's edge with
@@ -8,9 +11,6 @@
  * fragment shader takes up to 4 x 4 samples spread over the pixel's footprint (a box filter),
  * clamped to the node's own atlas rectangle so neighbors never bleed in.
  */
-/** What a quad draws, in its `info.y`. The shader compares halfway between kinds: they are floats. */
-export const KIND = { snapshot: 0, placeholder: 1, ring: 2 };
-
 /** `View` is written by CompositeRenderer.draw in this order, `Instance` by its quad methods. */
 const prelude = /* wgsl */ `
 struct View {

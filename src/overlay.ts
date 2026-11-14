@@ -149,7 +149,6 @@ export function createOverlay(surface: HTMLElement, color: string) {
   };
 }
 
-/** The resize handle an event target is, if any. */
 export const handleAt = (target: EventTarget | null): Handle | null =>
   target instanceof Element
     ? ((target.closest<HTMLElement>('[data-gpucanvas-handle]')?.dataset

@@ -1,5 +1,5 @@
 import type { GpuCanvas, Point, Rect } from '../src/index';
-import { center, intersects, unionOf } from '../src/rect';
+import { center, intersects, union } from './geometry';
 
 /**
  * Agents at work on the canvas. On load the canvas opens on one cluster of blank screens and the
@@ -315,7 +315,7 @@ export function startAgents(canvas: GpuCanvas, count: number, intro: Rect | null
       let first = true;
       for (let i = 0; i < pieces.length && !stopped; i += per) {
         const group = pieces.slice(i, i + per);
-        const area = unionOf(group.map((piece) => worldRect(target, piece)))!;
+        const area = union(group.map((piece) => worldRect(target, piece)));
         await glide(agent, area, first ? pace.flight : pace.reach);
         first = false;
         const element = selectionBox(

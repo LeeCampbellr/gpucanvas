@@ -19,7 +19,6 @@ export const worldToScreen = (camera: Camera, point: Point): Point => ({
   y: (point.y - camera.y) * camera.zoom,
 });
 
-/** A world rect as surface pixels. */
 export const rectToScreen = (camera: Camera, rect: Rect): Rect => ({
   ...worldToScreen(camera, rect),
   width: rect.width * camera.zoom,

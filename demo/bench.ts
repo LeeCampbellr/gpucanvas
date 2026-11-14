@@ -6,7 +6,7 @@ import {
   type GpuCanvasMode,
   type Rect,
 } from '../src/index';
-import { center } from '../src/rect';
+import { center } from './geometry';
 import { centeredOn, lerpCamera } from './fly';
 import { createMarquee } from '../src/editor';
 

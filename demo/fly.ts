@@ -15,7 +15,6 @@ export const centeredOn = (x: number, y: number, zoom: number, w: number, h: num
   zoom,
 });
 
-/** Animates the camera to `target`. */
 export function flyTo(canvas: GpuCanvas, target: Camera, duration = 1400): Promise<void> {
   const from = canvas.getCamera();
   return new Promise((resolve) => {
