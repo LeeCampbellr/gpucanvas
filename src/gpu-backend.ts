@@ -1,23 +1,13 @@
 import { Atlas, type AtlasSlot } from './atlas';
-import {
-  bindCameraInput,
-  containsPoint,
-  fitCamera,
-  intersects,
-  screenToWorld,
-  visibleWorldRect,
-  worldToScreen,
-  type Camera,
-  type Point,
-  type Rect,
-} from './camera';
+import { createBase, markSurface, styleNode } from './base';
+import { screenToWorld, visibleWorldRect } from './camera';
 import { elementInNode, nodeOfElement, rectInNode } from './elements';
 import { effectPad, effectParams, type Effect } from './effects';
-import { CompositeRenderer, FLOATS_PER_INSTANCE, type Run } from './gpu-renderer';
-import { boundsOf } from './node-style';
+import { CompositeRenderer } from './gpu-renderer';
+import { pointIn } from './input';
 import { Page } from './page';
+import { contains, intersection, intersects, type Point, type Rect } from './rect';
 import {
-  DEFAULT_CAMERA,
   DEFAULT_SELECTION_COLOR,
   HOVER_WIDTH,
   SELECTION_WIDTH,
@@ -132,8 +122,6 @@ const CONTENT_SETTLE_MS = 150;
  */
 const SMALL_NODE_PX = 200;
 const SMALL_REFRESH_MS = 250;
-const right = (rect: Rect) => rect.x + rect.width;
-const bottom = (rect: Rect) => rect.y + rect.height;
 /** How long the camera must rest before blurry snapshots are upgraded. */
 const SETTLE_MS = 120;
 /** Events that use a node, and how long after one its transitions are followed frame by frame. */
@@ -196,20 +184,6 @@ function rasterScaleFor(deviceScale: number) {
   return Math.min(MAX_DETAIL_SCALE, Math.max(MIN_RASTER_SCALE, scale));
 }
 
-const intersection = (a: Rect, b: Rect): Rect | null => {
-  const x = Math.max(a.x, b.x);
-  const y = Math.max(a.y, b.y);
-  const right = Math.min(a.x + a.width, b.x + b.width);
-  const bottom = Math.min(a.y + a.height, b.y + b.height);
-  return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
-};
-
-const contains = (outer: Rect, inner: Rect) =>
-  inner.x >= outer.x &&
-  inner.y >= outer.y &&
-  inner.x + inner.width <= outer.x + outer.width &&
-  inner.y + inner.height <= outer.y + outer.height;
-
 function cssColorToRgba(color: string): [number, number, number, number] {
   const context = document.createElement('canvas').getContext('2d')!;
   context.fillStyle = color;
@@ -249,21 +223,23 @@ export async function createGpuCanvas(
   if (!adapter) throw new Error('gpucanvas: no WebGPU adapter');
   const device = await adapter.requestDevice();
 
-  const surface = document.createElement('div');
-  surface.dataset.gpucanvasSurface = '';
-  Object.assign(surface.style, {
-    position: 'relative',
-    width: '100%',
-    height: '100%',
-    overflow: 'hidden',
-    touchAction: 'none',
+  const base = createBase<Node>(host, options, () => {
+    lastCameraChange = performance.now();
+    // A moving canvas has no hover; the node under a still pointer becomes live once it rests.
+    setLive(null);
+    clearTimeout(settleTimer);
+    settleTimer = window.setTimeout(() => {
+      pickLive();
+      schedule();
+    }, SETTLE_MS);
+    schedule();
   });
+  const { surface, nodes } = base;
   const canvas = document.createElement('canvas');
   canvas.setAttribute('content', 'drawable');
-  canvas.dataset.gpucanvasSurface = '';
+  markSurface(canvas);
   Object.assign(canvas.style, { display: 'block', width: '100%', height: '100%' });
   surface.append(canvas);
-  host.append(surface);
 
   const context = canvas.getContext('webgpu')!;
   const format = navigator.gpu.getPreferredCanvasFormat();
@@ -303,14 +279,12 @@ export async function createGpuCanvas(
     ? premultiplied(cssColorToRgba(options.hoverColor))
     : selectionColor;
 
-  const nodes = new Map<HTMLElement, Node>();
   /** Effects nodes wear, with their parameters and how far past the node they draw. */
   const effects = new Map<HTMLElement, { effect: Effect; params: number[]; pad: number }>();
   const startedAt = performance.now();
   /** Where effects see the pointer when there is none. */
   const FAR_AWAY: Point = { x: -1e7, y: -1e7 };
   renderer.onEffectReady = () => schedule();
-  const runs: Run[] = [];
   /** An effect in view animates, or is still compiling: draw again next frame. */
   let effectsMoving = false;
   let selection = new Set<Element>();
@@ -345,7 +319,6 @@ export async function createGpuCanvas(
   const pageByElement = new Map<Element, Page>();
   let openPage: Page | null = null;
 
-  let camera = options.camera ?? DEFAULT_CAMERA;
   let lastCameraChange = -Infinity;
   let frameNumber = 0;
   let promotionsPerFrame = 2;
@@ -386,6 +359,8 @@ export async function createGpuCanvas(
     });
   };
 
+  /** Canvas pixels per CSS pixel. */
+  const canvasDpr = () => canvas.width / Math.max(1, canvas.clientWidth);
   const resizeObserver = new ResizeObserver(([entry]) => {
     const size = entry.devicePixelContentBoxSize?.[0];
     canvas.width = Math.max(
@@ -410,12 +385,11 @@ export async function createGpuCanvas(
     reject: (error: Error) => void;
     tries: number;
   }> = [];
+  /** Nodes kept drawable and redrawn on every paint: under the pointer, focused, transitioning. */
+  const heldNodes = () => [live, lingering, focused, ...transitioning.keys()];
   const isPinned = (page: Page) =>
     captures.some((capture) => capture.node.page === page) ||
-    live?.page === page ||
-    lingering?.page === page ||
-    focused?.page === page ||
-    [...transitioning.keys()].some((node) => node.page === page);
+    heldNodes().some((node) => node?.page === page);
 
   /** This frame's texels per CSS pixel for tiles, and the world rect in view. */
   let detailScale = 1;
@@ -427,11 +401,11 @@ export async function createGpuCanvas(
   };
   let refreshTimer = 0;
   let refreshAt = Infinity;
+  const smallOnScreen = (node: Node) =>
+    Math.max(node.rect.width, node.rect.height) * base.camera().zoom < SMALL_NODE_PX;
   /** How long a changed node waits before it is redrawn: only small ones wait. */
   const refreshWait = (node: Node, now: number) =>
-    Math.max(node.rect.width, node.rect.height) * camera.zoom < SMALL_NODE_PX
-      ? node.refreshedAt + SMALL_REFRESH_MS - now
-      : 0;
+    smallOnScreen(node) ? node.refreshedAt + SMALL_REFRESH_MS - now : 0;
   const refreshLater = (wait: number) => {
     const at = performance.now() + wait;
     if (at >= refreshAt) return;
@@ -543,12 +517,12 @@ export async function createGpuCanvas(
     const first = (edge: number, origin: number) => Math.floor((edge - origin) / size);
     for (
       let row = first(shown.y, node.rect.y);
-      row <= first(bottom(shown) - 1e-6, node.rect.y);
+      row <= first(shown.y + shown.height - 1e-6, node.rect.y);
       row++
     ) {
       for (
         let column = first(shown.x, node.rect.x);
-        column <= first(right(shown) - 1e-6, node.rect.x);
+        column <= first(shown.x + shown.width - 1e-6, node.rect.x);
         column++
       ) {
         if (current.some((tile) => tile.column === column && tile.row === row)) continue;
@@ -587,11 +561,7 @@ export async function createGpuCanvas(
   };
 
   /** Draws one snapshot region into the atlas. Returns false when it could not. */
-  const drawSnapshot = (
-    page: Page,
-    source: { x: number; y: number; width: number; height: number } | null,
-    slot: AtlasSlot,
-  ) => {
+  const drawSnapshot = (page: Page, source: Rect | null, slot: AtlasSlot) => {
     try {
       device.queue.drawElementImageToTexture(
         source
@@ -631,16 +601,27 @@ export async function createGpuCanvas(
     Number.isInteger(previous.y)
       ? previous
       : ((thumbnail ? atlas.allocatePinned(width, height) : null) ?? atlas.allocate(width, height));
+  /** Texels for `length` CSS pixels at `scale`: a snapshot is never empty. */
+  const texels = (length: number, scale: number) => Math.max(1, Math.round(length * scale));
+  /** The node's own box on its page, where a snapshot of it is cropped from. */
+  const nodeRegion = (node: Node): Rect => ({
+    x: node.pageX,
+    y: node.pageY,
+    width: node.rect.width,
+    height: node.rect.height,
+  });
   const freshThumb = (node: Node) => atlas.isValid(node.thumb) && !node.thumbStale;
+  const setThumb = (node: Node, slot: AtlasSlot, now: number) => {
+    node.thumb = slot;
+    node.thumbStale = false;
+    node.thumbAt = now;
+  };
   /** Records a snapshot that reached the atlas; at thumbnail scale it is the node's thumbnail. */
   const drawn = (node: Node, slot: AtlasSlot, scale: number, now: number) => {
     node.slot = slot;
     node.slotScale = scale;
-    if (scale === THUMBNAIL_SCALE) {
-      node.thumb = slot;
-      node.thumbStale = false;
-      node.thumbAt = now;
-    } else if (node.dirty) node.thumbStale = true;
+    if (scale === THUMBNAIL_SCALE) setThumb(node, slot, now);
+    else if (node.dirty) node.thumbStale = true;
     if (node.dirty) {
       // A preview from before the change would cover the fresh snapshot.
       node.preview = null;
@@ -721,17 +702,11 @@ export async function createGpuCanvas(
           const thumbnail = node.targetScale === THUMBNAIL_SCALE;
           const slot = slotFor(
             thumbnail ? node.thumb : node.slot,
-            Math.max(1, Math.round(node.rect.width * node.targetScale)),
-            Math.max(1, Math.round(node.rect.height * node.targetScale)),
+            texels(node.rect.width, node.targetScale),
+            texels(node.rect.height, node.targetScale),
             thumbnail,
           );
-          const region = {
-            x: node.pageX,
-            y: node.pageY,
-            width: node.rect.width,
-            height: node.rect.height,
-          };
-          if (!slot || !drawSnapshot(page, region, slot)) {
+          if (!slot || !drawSnapshot(page, nodeRegion(node), slot)) {
             pending++;
             continue;
           }
@@ -747,11 +722,7 @@ export async function createGpuCanvas(
       const warm = new Set<number>();
       const drawRegion = (node: Node, rect: Rect, scale: number, previous: AtlasSlot | null) => {
         if (!warm.has(scale) && overBudget()) return null;
-        const slot = slotFor(
-          previous,
-          Math.max(1, Math.round(rect.width * scale)),
-          Math.max(1, Math.round(rect.height * scale)),
-        );
+        const slot = slotFor(previous, texels(rect.width, scale), texels(rect.height, scale));
         const region = {
           x: node.pageX + rect.x - node.rect.x,
           y: node.pageY + rect.y - node.rect.y,
@@ -807,21 +778,13 @@ export async function createGpuCanvas(
         if (atlas.isValid(node.thumb) && start - node.thumbAt < THUMBNAIL_REFRESH_MS) continue;
         const slot = slotFor(
           node.thumb,
-          Math.max(1, Math.round(node.rect.width * THUMBNAIL_SCALE)),
-          Math.max(1, Math.round(node.rect.height * THUMBNAIL_SCALE)),
+          texels(node.rect.width, THUMBNAIL_SCALE),
+          texels(node.rect.height, THUMBNAIL_SCALE),
           true,
         );
-        const region = {
-          x: node.pageX,
-          y: node.pageY,
-          width: node.rect.width,
-          height: node.rect.height,
-        };
-        if (!slot || !drawSnapshot(page, region, slot)) continue;
+        if (!slot || !drawSnapshot(page, nodeRegion(node), slot)) continue;
         calls++;
-        node.thumb = slot;
-        node.thumbStale = false;
-        node.thumbAt = start;
+        setThumb(node, slot, start);
       }
       const done =
         plan.nodes.every((node) => !node.dirty && atlas.isValid(node.slot)) &&
@@ -838,75 +801,11 @@ export async function createGpuCanvas(
     let instances = visible.length;
     for (const node of visible) instances += node.tiles.length + (node.preview ? 1 : 0);
     instances += selection.size + 1;
-    renderer.reserve(instances);
-    const data = renderer.instances;
-    let count = 0;
-    runs.length = 0;
+    renderer.begin(instances);
     effectsMoving = false;
-    let runEffect: Effect | null = null;
-    const startRun = (effect: Effect | null) => {
-      if (runs.length && runEffect === effect) return;
-      runEffect = effect;
-      runs.push({ effect, start: count, count: 0 });
-    };
-    const push = (rect: Rect, slot: AtlasSlot | null) => {
-      startRun(null);
-      runs[runs.length - 1].count++;
-      const offset = count++ * FLOATS_PER_INSTANCE;
-      data[offset] = rect.x;
-      data[offset + 1] = rect.y;
-      data[offset + 2] = rect.width;
-      data[offset + 3] = rect.height;
-      if (slot) {
-        atlas.touch(slot.layer);
-        data[offset + 4] = slot.x;
-        data[offset + 5] = slot.y;
-        data[offset + 6] = slot.x + slot.width;
-        data[offset + 7] = slot.y + slot.height;
-        data[offset + 8] = slot.layer;
-        data[offset + 9] = 0;
-      } else {
-        data[offset + 9] = 1;
-      }
-      data[offset + 10] = 0;
-    };
-    /** A node drawn by its effect: the whole snapshot, padded, with its parameters. */
-    const pushEffect = (
-      node: Node,
-      slot: AtlasSlot,
-      worn: { effect: Effect; params: number[]; pad: number },
-    ) => {
-      startRun(worn.effect);
-      runs[runs.length - 1].count++;
-      const offset = count++ * FLOATS_PER_INSTANCE;
-      const { rect } = node;
-      data[offset] = rect.x;
-      data[offset + 1] = rect.y;
-      data[offset + 2] = rect.width;
-      data[offset + 3] = rect.height;
-      atlas.touch(slot.layer);
-      data[offset + 4] = slot.x;
-      data[offset + 5] = slot.y;
-      data[offset + 6] = slot.x + slot.width;
-      data[offset + 7] = slot.y + slot.height;
-      data[offset + 8] = slot.layer;
-      data[offset + 9] = 0;
-      data[offset + 10] = worn.pad;
-      data.set(worn.params, offset + 12);
-    };
     const pushRing = (element: Element, color: number[], width: number) => {
       const rect = ringRect(element);
-      if (!rect || !intersects(rect, frameView)) return;
-      startRun(null);
-      runs[runs.length - 1].count++;
-      const offset = count++ * FLOATS_PER_INSTANCE;
-      data[offset] = rect.x;
-      data[offset + 1] = rect.y;
-      data[offset + 2] = rect.width;
-      data[offset + 3] = rect.height;
-      data.set(color, offset + 4);
-      data[offset + 9] = 2;
-      data[offset + 10] = width;
+      if (rect && intersects(rect, frameView)) renderer.ring(rect, color, width);
     };
     let onThumbnail = 0;
     for (const node of visible) {
@@ -931,29 +830,31 @@ export async function createGpuCanvas(
       if (worn) {
         if (worn.effect.animated) effectsMoving = true;
         if (base && renderer.hasEffect(worn.effect)) {
-          pushEffect(node, base, worn);
+          renderer.effectQuad(node.rect, base, worn.effect, worn.pad, worn.params);
           continue;
         }
         effectsMoving = true;
       }
-      push(node.rect, base);
+      renderer.quad(node.rect, base);
       // Back to front: stale tiles and tiles from an earlier zoom, the preview of a change,
       // then this zoom's fresh tiles.
       const current = (tile: Tile) => tile.scale === detailScale && !tile.stale;
       for (const tile of node.tiles)
-        if (!current(tile) && atlas.isValid(tile.slot)) push(tile.rect, tile.slot);
-      if (node.preview && atlas.isValid(node.preview)) push(node.previewRect!, node.preview);
+        if (!current(tile) && atlas.isValid(tile.slot)) renderer.quad(tile.rect, tile.slot);
+      if (node.preview && atlas.isValid(node.preview))
+        renderer.quad(node.previewRect!, node.preview);
       for (const tile of node.tiles)
-        if (current(tile) && atlas.isValid(tile.slot)) push(tile.rect, tile.slot);
+        if (current(tile) && atlas.isValid(tile.slot)) renderer.quad(tile.rect, tile.slot);
     }
     stats.onThumbnail = onThumbnail;
     // Outlines last, so no neighbor covers them, and hover over the selection.
     for (const element of selection) pushRing(element, selectionColor, SELECTION_WIDTH);
     if (hovered && !selection.has(hovered)) pushRing(hovered, hoverColor, HOVER_WIDTH);
     const cssWidth = canvas.clientWidth;
-    const dpr = canvas.width / Math.max(1, cssWidth);
+    const dpr = canvasDpr();
     const now = performance.now();
-    renderer.draw(camera, cssWidth, canvas.clientHeight, dpr, count, runs, {
+    const camera = base.camera();
+    renderer.draw(camera, cssWidth, canvas.clientHeight, dpr, {
       time: (now - startedAt) / 1000,
       pointer: pointer ? screenToWorld(camera, pointer) : FAR_AWAY,
       press,
@@ -971,7 +872,8 @@ export async function createGpuCanvas(
     const start = performance.now();
     atlas.nextFrame();
     const cssWidth = canvas.clientWidth;
-    const dpr = canvas.width / Math.max(1, cssWidth);
+    const dpr = canvasDpr();
+    const camera = base.camera();
     const view = visibleWorldRect(camera, cssWidth, canvas.clientHeight);
     const moving = start - lastCameraChange < SETTLE_MS;
     planFrame(view, rasterScaleFor(camera.zoom * dpr), camera.zoom * dpr, moving);
@@ -1027,8 +929,8 @@ export async function createGpuCanvas(
   const drawCaptures = () => {
     for (const capture of [...captures]) {
       const { node, scale } = capture;
-      const width = Math.max(1, Math.round(node.rect.width * scale));
-      const height = Math.max(1, Math.round(node.rect.height * scale));
+      const width = texels(node.rect.width, scale);
+      const height = texels(node.rect.height, scale);
       const texture = device.createTexture({
         size: { width, height },
         format: 'rgba8unorm',
@@ -1092,7 +994,7 @@ export async function createGpuCanvas(
     for (const element of event.changedElements) {
       const page = pageByElement.get(element);
       if (!page) continue;
-      for (const node of [live, lingering, focused, ...transitioning.keys()]) {
+      for (const node of heldNodes()) {
         if (node?.page === page) {
           node.dirty = true;
           changed = true;
@@ -1105,15 +1007,11 @@ export async function createGpuCanvas(
     frame(true);
   };
 
-  const viewNow = () => visibleWorldRect(camera, canvas.clientWidth, canvas.clientHeight);
-
-  /** The node an element belongs to: its ancestor whose parent is a page. */
+  /** The node a DOM node (an event target, a mutated text) belongs to. */
   const nodeOf = (target: globalThis.Node): Node | undefined => {
-    let element = target instanceof HTMLElement ? target : target.parentElement;
-    while (element?.parentElement && !pageByElement.has(element.parentElement)) {
-      element = element.parentElement;
-    }
-    return element ? nodes.get(element) : undefined;
+    const element = target instanceof Element ? target : target.parentElement;
+    const node = element && nodeOfElement(nodes, element);
+    return node ? nodes.get(node) : undefined;
   };
 
   // Content changes on any node, drawable or parked. Style that gpucanvas writes on page and
@@ -1134,7 +1032,7 @@ export async function createGpuCanvas(
       if (node && !node.dirty) {
         node.dirty = true;
         // Off screen it waits until it scrolls into view.
-        if (!changed) changed = intersects(node.rect, viewNow());
+        if (!changed) changed = intersects(node.rect, base.view());
       }
     }
     if (changed) schedule();
@@ -1154,6 +1052,11 @@ export async function createGpuCanvas(
     page.element.style.transform = '';
     schedule();
   };
+  /** A node no longer held: redrawn once as it rests, its page released. */
+  const letGo = (node: Node) => {
+    node.dirty = true;
+    unpin(node.page);
+  };
 
   /**
    * Puts the live page's hit area under the live node. Chrome 157 hit tests at the canvas
@@ -1164,6 +1067,7 @@ export async function createGpuCanvas(
    */
   const positionLivePage = () => {
     if (!live || livePositioned) return;
+    const camera = base.camera();
     const { zoom } = camera;
     const x = (live.rect.x - camera.x - live.pageX) * zoom;
     const y = (live.rect.y - camera.y - live.pageY) * zoom;
@@ -1173,7 +1077,7 @@ export async function createGpuCanvas(
           canvasTransform: new DOMMatrix([zoom, 0, 0, zoom, x, y]),
         });
       } else {
-        const dpr = canvas.width / Math.max(1, canvas.clientWidth);
+        const dpr = canvasDpr();
         const drawn = new DOMMatrix([zoom, 0, 0, zoom, x * dpr, y * dpr]);
         live.page.element.style.transform = canvas
           .getElementTransform(live.page.element, drawn)
@@ -1196,16 +1100,12 @@ export async function createGpuCanvas(
       clearTimeout(lingerTimer);
       const earlier = lingering;
       lingering = previous;
-      if (earlier && earlier !== previous) {
-        earlier.dirty = true;
-        unpin(earlier.page);
-      }
+      if (earlier && earlier !== previous) letGo(earlier);
       lingerTimer = window.setTimeout(() => {
         const last = lingering;
         if (!last) return;
         lingering = null;
-        last.dirty = true;
-        unpin(last.page);
+        letGo(last);
       }, LINGER_MS);
       unpin(previous.page);
     }
@@ -1224,15 +1124,11 @@ export async function createGpuCanvas(
   /** Makes the topmost node under the last pointer position live. */
   const pickLive = () => {
     if (!pointer) return setLive(null);
-    const point = screenToWorld(camera, pointer);
-    let hit: Node | null = null;
-    for (const node of nodes.values()) if (containsPoint(node.rect, point)) hit = node;
-    setLive(hit);
+    setLive(base.nodeAt(screenToWorld(base.camera(), pointer)));
   };
 
   const onPointerMove = (event: PointerEvent) => {
-    const bounds = canvas.getBoundingClientRect();
-    pointer = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+    pointer = pointIn(canvas, event);
     // A press in progress belongs to the live node (text selection, sliders) or to a pan.
     if (event.buttons === 0) pickLive();
   };
@@ -1250,9 +1146,8 @@ export async function createGpuCanvas(
    */
   let tapped = false;
   const onPointerDown = (event: PointerEvent) => {
-    const bounds = canvas.getBoundingClientRect();
-    const at = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
-    press = screenToWorld(camera, at);
+    const at = pointIn(canvas, event);
+    press = screenToWorld(base.camera(), at);
     pressedAt = performance.now();
     if (event.pointerType !== 'mouse') {
       pointer = at;
@@ -1264,13 +1159,8 @@ export async function createGpuCanvas(
   const onClick = (event: MouseEvent) => {
     if (!tapped) return;
     tapped = false;
-    const bounds = canvas.getBoundingClientRect();
-    const point = screenToWorld(camera, {
-      x: event.clientX - bounds.left,
-      y: event.clientY - bounds.top,
-    });
-    let top: Node | null = null;
-    for (const node of nodes.values()) if (containsPoint(node.rect, point)) top = node;
+    const point = screenToWorld(base.camera(), pointIn(canvas, event));
+    const top = base.nodeAt(point);
     if (!top || top.element.contains(event.target as Element)) return;
     // An icon's SVG is not focusable or clickable the HTML way; its HTML parent is.
     let target: Element | null = elementInNode(top.element, top.rect, point);
@@ -1293,10 +1183,7 @@ export async function createGpuCanvas(
     if (node === focused) return;
     const previous = focused;
     focused = node;
-    if (previous) {
-      previous.dirty = true;
-      unpin(previous.page);
-    }
+    if (previous) letGo(previous);
     if (node) {
       node.page.setDrawable(true, frameNumber);
       node.dirty = true;
@@ -1307,10 +1194,7 @@ export async function createGpuCanvas(
     if (event.relatedTarget && canvas.contains(event.relatedTarget as globalThis.Node)) return;
     const previous = focused;
     focused = null;
-    if (previous) {
-      previous.dirty = true;
-      unpin(previous.page);
-    }
+    if (previous) letGo(previous);
   };
   // An image that finishes loading changes pixels without changing the DOM.
   const onResourceLoad = (event: Event) => {
@@ -1356,8 +1240,8 @@ export async function createGpuCanvas(
     const node = nodeOf(event.target as HTMLElement);
     const now = performance.now();
     if (!node || now - (usedAt.get(node) ?? -Infinity) > USED_MS) return;
-    if (!intersects(node.rect, viewNow())) return;
-    if (Math.max(node.rect.width, node.rect.height) * camera.zoom < SMALL_NODE_PX) return;
+    if (!intersects(node.rect, base.view())) return;
+    if (smallOnScreen(node)) return;
     const ms = transitionMs(event.target as Element) + 32;
     const end = now + ms;
     if ((transitioning.get(node) ?? 0) >= end) return;
@@ -1367,39 +1251,28 @@ export async function createGpuCanvas(
     setTimeout(() => {
       if (transitioning.get(node) !== end) return;
       transitioning.delete(node);
-      node.dirty = true;
-      unpin(node.page);
+      letGo(node);
       schedule();
     }, ms);
   };
   for (const type of USE_EVENTS) canvas.addEventListener(type, onUse, true);
   canvas.addEventListener('transitionrun', onTransitionRun);
 
-  const setCamera = (next: Camera) => {
-    camera = next;
-    lastCameraChange = performance.now();
-    // A moving canvas has no hover; the node under a still pointer becomes live once it rests.
-    setLive(null);
-    clearTimeout(settleTimer);
-    settleTimer = window.setTimeout(() => {
-      pickLive();
-      schedule();
-    }, SETTLE_MS);
-    schedule();
-    options.onCameraChange?.(camera);
+  const newPage = (width: number, height: number) => {
+    const page = new Page(width, height);
+    pages.set(page, new Set());
+    pageByElement.set(page.element, page);
+    canvas.append(page.element);
+    return page;
   };
-  const unbindInput = bindCameraInput(surface, () => camera, setCamera);
 
   const placeNode = (element: HTMLElement, rect: Rect) => {
     let slot = openPage?.place(rect.width, rect.height) ?? null;
     if (!slot) {
-      const page = new Page(
+      const page = newPage(
         Math.max(pageSize, Math.ceil(rect.width)),
         Math.max(pageSize, Math.ceil(rect.height)),
       );
-      pages.set(page, new Set());
-      pageByElement.set(page.element, page);
-      canvas.append(page.element);
       // Oversized nodes get a page of their own and leave the open page as it was.
       if (page.width === pageSize && page.height === pageSize) openPage = page;
       slot = page.place(rect.width, rect.height)!;
@@ -1436,10 +1309,7 @@ export async function createGpuCanvas(
     const previous = node.page;
     const wasLive = live === node;
     if (wasLive) setLive(null);
-    const page = new Page(Math.ceil(node.rect.width), Math.ceil(node.rect.height));
-    pages.set(page, new Set());
-    pageByElement.set(page.element, page);
-    canvas.append(page.element);
+    const page = newPage(Math.ceil(node.rect.width), Math.ceil(node.rect.height));
     page.place(node.rect.width, node.rect.height);
     const target = page.element as HTMLElement & {
       moveBefore?: (child: globalThis.Node, before: globalThis.Node | null) => void;
@@ -1475,15 +1345,11 @@ export async function createGpuCanvas(
   };
 
   return {
+    ...base.api,
     mode: 'gpu',
-    surface,
     addNode(element, rect) {
-      Object.assign(element.style, {
-        boxSizing: 'border-box',
-        contain: 'strict',
-        overflow: 'hidden',
-        pointerEvents: 'none',
-      });
+      styleNode(element);
+      element.style.pointerEvents = 'none';
       const node = {
         element,
         rect,
@@ -1537,25 +1403,9 @@ export async function createGpuCanvas(
       element.remove();
       schedule();
     },
-    getNodeRect: (element) => {
-      const node = nodes.get(element);
-      return node ? { ...node.rect } : null;
-    },
-    getNodesIn(rect) {
-      const hits: HTMLElement[] = [];
-      for (const node of nodes.values()) if (intersects(node.rect, rect)) hits.push(node.element);
-      return hits;
-    },
-    getNodeOf: (element) => nodeOfElement(nodes, element),
     getElementRect(element) {
       const rect = ringRect(element);
       return rect ? { ...rect } : null;
-    },
-    getElementAt(point) {
-      // The last node added draws on top.
-      let top: Node | null = null;
-      for (const node of nodes.values()) if (containsPoint(node.rect, point)) top = node;
-      return top ? elementInNode(top.element, top.rect, point) : null;
     },
     setSelection(elements) {
       selection = new Set(elements);
@@ -1576,10 +1426,6 @@ export async function createGpuCanvas(
       } else effects.delete(element);
       schedule();
     },
-    screenToWorld: (point) => screenToWorld(camera, point),
-    worldToScreen: (point) => worldToScreen(camera, point),
-    getCamera: () => camera,
-    setCamera,
     invalidate: onFontsLoaded,
     snapshot(element, options = {}) {
       const node = nodes.get(element);
@@ -1597,10 +1443,6 @@ export async function createGpuCanvas(
     setBackground(color) {
       [renderer.background, renderer.placeholder] = colorsFor(color);
       schedule();
-    },
-    fit(padding) {
-      const bounds = boundsOf([...nodes.values()].map((node) => node.rect));
-      if (bounds) setCamera(fitCamera(bounds, canvas.clientWidth, canvas.clientHeight, padding));
     },
     getStats: () => ({
       mode: 'gpu',
@@ -1638,10 +1480,9 @@ export async function createGpuCanvas(
       canvas.removeEventListener('focusout', onFocusOut);
       canvas.removeEventListener('transitionrun', onTransitionRun);
       for (const type of USE_EVENTS) canvas.removeEventListener(type, onUse, true);
-      unbindInput();
       resizeObserver.disconnect();
       canvas.onpaint = null;
-      surface.remove();
+      base.destroy();
       renderer.destroy();
       atlas.destroy();
       device.destroy();

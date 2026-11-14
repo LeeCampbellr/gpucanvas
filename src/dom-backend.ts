@@ -1,19 +1,9 @@
-import {
-  bindCameraInput,
-  containsPoint,
-  fitCamera,
-  intersects,
-  screenToWorld,
-  visibleWorldRect,
-  worldToScreen,
-  type Camera,
-  type Rect,
-} from './camera';
+import { createBase, markSurface, styleNode, type BaseNode } from './base';
+import type { Camera } from './camera';
 import { effectParams, type Effect } from './effects';
-import { elementInNode, nodeOfElement, rectInNode } from './elements';
-import { applyNodeBase, applyNodeSize, boundsOf } from './node-style';
+import { nodeOfElement, rectInNode } from './elements';
+import { intersects, type Rect } from './rect';
 import {
-  DEFAULT_CAMERA,
   DEFAULT_SELECTION_COLOR,
   HOVER_WIDTH,
   SELECTION_WIDTH,
@@ -26,18 +16,18 @@ import {
  * positioned inside one world element that the camera moves with a CSS transform.
  */
 export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): GpuCanvas {
-  const surface = document.createElement('div');
-  surface.dataset.gpucanvasSurface = '';
-  Object.assign(surface.style, {
-    position: 'relative',
-    width: '100%',
-    height: '100%',
-    overflow: 'hidden',
-    touchAction: 'none',
-    background: options.background ?? 'transparent',
-  });
+  let frameMs = 0;
+  const apply = (camera: Camera) => {
+    const start = performance.now();
+    world.style.transform = `scale(${camera.zoom}) translate(${-camera.x}px, ${-camera.y}px)`;
+    world.style.setProperty('--gpucanvas-zoom', String(camera.zoom));
+    frameMs = performance.now() - start;
+  };
+  const base = createBase<BaseNode>(host, options, apply);
+  const { surface, nodes } = base;
+  surface.style.background = options.background ?? 'transparent';
   const world = document.createElement('div');
-  world.dataset.gpucanvasSurface = '';
+  markSurface(world);
   Object.assign(world.style, {
     position: 'absolute',
     left: '0',
@@ -50,9 +40,7 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
   Object.assign(overlay.style, { position: 'absolute', left: '0', top: '0', zIndex: '1' });
   world.append(overlay);
   surface.append(world);
-  host.append(surface);
 
-  const nodes = new Map<HTMLElement, Rect>();
   // Outlines live inside the zoomed world, so their width divides the zoom back out.
   const ring = (color: string, width: number) =>
     `calc(${width}px / var(--gpucanvas-zoom)) solid ${color}`;
@@ -66,7 +54,7 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
   const boxes = new Map<Element, HTMLElement>();
   const elementRect = (element: Element): Rect | null => {
     const node = element.isConnected ? nodeOfElement(nodes, element) : null;
-    return node ? rectInNode(node, nodes.get(node)!, element) : null;
+    return node ? rectInNode(node, nodes.get(node)!.rect, element) : null;
   };
   // Boxes follow their elements' layout every frame while there are any.
   let boxFrame = 0;
@@ -142,38 +130,24 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
       element.animate(keyframes, { duration: period * 1000, iterations: Infinity }),
     );
   };
-  let camera = options.camera ?? DEFAULT_CAMERA;
-  let frameMs = 0;
-
-  const apply = () => {
-    const start = performance.now();
-    world.style.transform = `scale(${camera.zoom}) translate(${-camera.x}px, ${-camera.y}px)`;
-    world.style.setProperty('--gpucanvas-zoom', String(camera.zoom));
-    frameMs = performance.now() - start;
-  };
-  const setCamera = (next: Camera) => {
-    camera = next;
-    apply();
-    options.onCameraChange?.(camera);
-  };
-  const unbindInput = bindCameraInput(surface, () => camera, setCamera);
-  apply();
+  apply(base.camera());
 
   return {
+    ...base.api,
     mode: 'dom',
-    surface,
     addNode(element, rect) {
-      applyNodeBase(element);
+      styleNode(element);
       element.style.position = 'absolute';
-      nodes.set(element, rect);
+      nodes.set(element, { element, rect });
       this.updateNode(element, rect);
       world.append(element);
     },
     updateNode(element, rect) {
-      nodes.set(element, rect);
+      nodes.set(element, { element, rect });
       element.style.left = `${rect.x}px`;
       element.style.top = `${rect.y}px`;
-      applyNodeSize(element, rect);
+      element.style.width = `${rect.width}px`;
+      element.style.height = `${rect.height}px`;
     },
     removeNode(element) {
       clearEffect(element);
@@ -182,18 +156,7 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
       element.style.outline = '';
       element.remove();
     },
-    getNodeRect: (element) => nodes.get(element) ?? null,
-    getNodesIn(rect) {
-      return [...nodes].filter(([, node]) => intersects(node, rect)).map(([element]) => element);
-    },
-    getNodeOf: (element) => nodeOfElement(nodes, element),
     getElementRect: elementRect,
-    getElementAt(point) {
-      // The last node added draws on top.
-      let top: HTMLElement | null = null;
-      for (const [element, rect] of nodes) if (containsPoint(rect, point)) top = element;
-      return top ? elementInNode(top, nodes.get(top)!, point) : null;
-    },
     setSelection(elements) {
       selection = new Set(elements);
       drawOutlines();
@@ -206,10 +169,6 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
     setEffect(element, effect, params) {
       if (nodes.has(element)) applyEffect(element, effect, params);
     },
-    getCamera: () => camera,
-    setCamera,
-    screenToWorld: (point) => screenToWorld(camera, point),
-    worldToScreen: (point) => worldToScreen(camera, point),
     // The browser repaints DOM nodes itself.
     invalidate() {},
     snapshot: () =>
@@ -217,14 +176,10 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
     setBackground(color) {
       surface.style.background = color;
     },
-    fit(padding) {
-      const bounds = boundsOf(nodes.values());
-      if (bounds) setCamera(fitCamera(bounds, surface.clientWidth, surface.clientHeight, padding));
-    },
     getStats() {
-      const view = visibleWorldRect(camera, surface.clientWidth, surface.clientHeight);
+      const view = base.view();
       let visible = 0;
-      for (const rect of nodes.values()) if (intersects(rect, view)) visible++;
+      for (const node of nodes.values()) if (intersects(node.rect, view)) visible++;
       return {
         mode: 'dom',
         nodes: nodes.size,
@@ -238,8 +193,7 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
     },
     destroy() {
       cancelAnimationFrame(boxFrame);
-      unbindInput();
-      surface.remove();
+      base.destroy();
     },
   };
 }

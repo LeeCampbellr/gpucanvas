@@ -20,6 +20,7 @@ import {
   type GpuCanvasOptions,
   type Layer,
 } from './index';
+import { defaultLabel } from './editor';
 
 const CanvasContext = createContext<GpuCanvasInstance | null>(null);
 
@@ -149,8 +150,7 @@ export function useEditor(options: EditorOptions = {}) {
       labels,
       snap,
       color,
-      label: (layer) =>
-        latest.current.label ? latest.current.label(layer) : defaultLabel(canvas, layer),
+      label: (layer) => (latest.current.label ?? defaultLabel(canvas))(layer),
       onChange(next) {
         setSelected(next);
         latest.current.onChange?.(next);
@@ -173,10 +173,6 @@ export function useEditor(options: EditorOptions = {}) {
 }
 
 type PickFunction = Extract<EditorPick, (...args: never[]) => unknown>;
-
-/** The editor's own label: the tag name inside nodes, nothing for nodes. */
-const defaultLabel = (canvas: GpuCanvasInstance, layer: Layer) =>
-  canvas.getNodeOf(layer[0]) === layer[0] ? null : layer[0].localName;
 
 export interface ComponentInfo {
   /** The component's display name. Production builds usually minify it. */

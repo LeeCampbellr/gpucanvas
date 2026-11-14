@@ -1,0 +1,122 @@
+import { zoomAt, type Camera } from './camera';
+import type { Point } from './rect';
+
+/** Where a pointer event lands on `element`, in its CSS pixels from the top left. */
+export const pointIn = (element: Element, event: MouseEvent): Point => {
+  const bounds = element.getBoundingClientRect();
+  return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+};
+
+/**
+ * Wheel, drag and touch input: trackpad scroll pans, pinch or ctrl/cmd + wheel zooms, dragging
+ * empty space pans, and a two-finger touch pinch zooms and pans, wherever the fingers land. Calls
+ * `onChange` with the next camera; the caller owns the camera value.
+ */
+export function bindCameraInput(
+  element: HTMLElement,
+  getCamera: () => Camera,
+  onChange: (camera: Camera) => void,
+): () => void {
+  const onWheel = (event: WheelEvent) => {
+    event.preventDefault();
+    const camera = getCamera();
+    if (event.ctrlKey || event.metaKey) {
+      const factor = Math.exp(-event.deltaY * (event.deltaMode === 1 ? 0.05 : 0.01));
+      const at = pointIn(element, event);
+      onChange(zoomAt(camera, at.x, at.y, factor));
+    } else {
+      onChange({
+        ...camera,
+        x: camera.x + event.deltaX / camera.zoom,
+        y: camera.y + event.deltaY / camera.zoom,
+      });
+    }
+  };
+
+  let drag: { pointerId: number; x: number; y: number } | null = null;
+  /** Fingers down on the canvas, nodes included, so a pinch can start on one. */
+  const touches = new Map<number, { x: number; y: number }>();
+  const pinch = () => {
+    const [a, b] = [...touches.values()];
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, distance: Math.hypot(a.x - b.x, a.y - b.y) };
+  };
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.pointerType === 'touch') {
+      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (touches.size === 2) {
+        drag = null;
+        for (const id of touches.keys()) {
+          try {
+            element.setPointerCapture(id);
+          } catch {
+            // The finger already lifted; pointerup removes it.
+          }
+        }
+        return;
+      }
+    }
+    // Only drags that start on the canvas background pan; nodes keep their own pointer events.
+    // Shift-drags are left to the app, for a selection box.
+    if ((event.button !== 0 && event.button !== 1) || event.shiftKey) return;
+    if (
+      event.target !== element &&
+      !(event.target as Element).hasAttribute?.('data-gpucanvas-surface')
+    )
+      return;
+    drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+    element.setPointerCapture(event.pointerId);
+  };
+  const onPointerMove = (event: PointerEvent) => {
+    const touch = touches.get(event.pointerId);
+    if (touch && touches.size === 2) {
+      const before = pinch();
+      touch.x = event.clientX;
+      touch.y = event.clientY;
+      const after = pinch();
+      if (!before.distance) return;
+      const bounds = element.getBoundingClientRect();
+      const zoomed = zoomAt(
+        getCamera(),
+        before.x - bounds.left,
+        before.y - bounds.top,
+        after.distance / before.distance,
+      );
+      onChange({
+        ...zoomed,
+        x: zoomed.x - (after.x - before.x) / zoomed.zoom,
+        y: zoomed.y - (after.y - before.y) / zoomed.zoom,
+      });
+      return;
+    }
+    if (touch) {
+      touch.x = event.clientX;
+      touch.y = event.clientY;
+    }
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const camera = getCamera();
+    onChange({
+      ...camera,
+      x: camera.x - (event.clientX - drag.x) / camera.zoom,
+      y: camera.y - (event.clientY - drag.y) / camera.zoom,
+    });
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+  };
+  const onPointerUp = (event: PointerEvent) => {
+    touches.delete(event.pointerId);
+    if (drag?.pointerId === event.pointerId) drag = null;
+  };
+
+  element.addEventListener('wheel', onWheel, { passive: false });
+  element.addEventListener('pointerdown', onPointerDown);
+  element.addEventListener('pointermove', onPointerMove);
+  element.addEventListener('pointerup', onPointerUp);
+  element.addEventListener('pointercancel', onPointerUp);
+  return () => {
+    element.removeEventListener('wheel', onWheel);
+    element.removeEventListener('pointerdown', onPointerDown);
+    element.removeEventListener('pointermove', onPointerMove);
+    element.removeEventListener('pointerup', onPointerUp);
+    element.removeEventListener('pointercancel', onPointerUp);
+  };
+}

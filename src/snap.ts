@@ -1,4 +1,4 @@
-import type { Rect } from './camera';
+import type { Rect } from './rect';
 
 /** A line drawn while something snaps, in world units. */
 export interface Guide {

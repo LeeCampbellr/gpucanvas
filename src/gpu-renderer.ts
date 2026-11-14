@@ -1,12 +1,16 @@
-import type { Atlas } from './atlas';
-import type { Camera, Point } from './camera';
+import type { Atlas, AtlasSlot } from './atlas';
+import type { Camera } from './camera';
+import type { Point, Rect } from './rect';
 import { compositeShader, effectShader } from './composite-shader';
 import type { Effect } from './effects';
 
-export const FLOATS_PER_INSTANCE = 16;
+const FLOATS_PER_INSTANCE = 16;
+const SNAPSHOT = 0;
+const PLACEHOLDER = 1;
+const RING = 2;
 
 /** Consecutive instances drawn with one effect's pipeline, or the plain one (`effect` null). */
-export interface Run {
+interface Run {
   effect: Effect | null;
   start: number;
   count: number;
@@ -14,12 +18,14 @@ export interface Run {
 
 /**
  * Draws every visible node with instanced draw calls: one for the whole frame, or one per run of
- * nodes sharing an effect, in paint order. The caller fills `instances` with FLOATS_PER_INSTANCE
- * floats per quad: world rect, atlas texel rect (a ring's color), then layer, kind (0 snapshot,
- * 1 placeholder, 2 ring) and ring width or effect padding, then an effect's parameters.
+ * nodes sharing an effect, in paint order. Each frame the caller lists its quads between `begin`
+ * and `draw`. A quad is FLOATS_PER_INSTANCE floats: world rect, atlas texel rect (a ring's color),
+ * then layer, kind and ring width or effect padding, then an effect's parameters.
  */
 export class CompositeRenderer {
-  instances = new Float32Array(FLOATS_PER_INSTANCE * 4096);
+  private instances = new Float32Array(FLOATS_PER_INSTANCE * 4096);
+  private count = 0;
+  private readonly runs: Run[] = [];
   private instanceBuffer: GPUBuffer;
   private readonly uniforms: GPUBuffer;
   private readonly uniformData = new Float32Array(20);
@@ -136,26 +142,82 @@ export class CompositeRenderer {
     return false;
   }
 
-  /** Grows the CPU and GPU instance storage to hold at least `count` instances. */
-  reserve(count: number) {
-    const floats = count * FLOATS_PER_INSTANCE;
-    if (this.instances.length >= floats) return;
-    this.instances = new Float32Array(Math.max(floats, this.instances.length * 2));
-    this.instanceBuffer.destroy();
-    this.instanceBuffer = this.createInstanceBuffer();
+  /** Starts a frame with room for at least `capacity` quads. */
+  begin(capacity: number) {
+    const floats = capacity * FLOATS_PER_INSTANCE;
+    if (this.instances.length < floats) {
+      this.instances = new Float32Array(Math.max(floats, this.instances.length * 2));
+      this.instanceBuffer.destroy();
+      this.instanceBuffer = this.createInstanceBuffer();
+    }
+    this.count = 0;
+    this.runs.length = 0;
   }
 
+  /** Room for the next quad, in the run of `effect`; returns its first float. */
+  private next(effect: Effect | null) {
+    const last = this.runs.at(-1);
+    if (last && last.effect === effect) last.count++;
+    else this.runs.push({ effect, start: this.count, count: 1 });
+    return this.count++ * FLOATS_PER_INSTANCE;
+  }
+
+  private writeRect(offset: number, rect: Rect) {
+    const data = this.instances;
+    data[offset] = rect.x;
+    data[offset + 1] = rect.y;
+    data[offset + 2] = rect.width;
+    data[offset + 3] = rect.height;
+  }
+
+  private writeSlot(offset: number, slot: AtlasSlot) {
+    const data = this.instances;
+    this.atlas.touch(slot.layer);
+    data[offset + 4] = slot.x;
+    data[offset + 5] = slot.y;
+    data[offset + 6] = slot.x + slot.width;
+    data[offset + 7] = slot.y + slot.height;
+    data[offset + 8] = slot.layer;
+    data[offset + 9] = SNAPSHOT;
+  }
+
+  /** `rect` showing the snapshot in `slot`, or the placeholder color while there is none. */
+  quad(rect: Rect, slot: AtlasSlot | null) {
+    const offset = this.next(null);
+    this.writeRect(offset, rect);
+    if (slot) this.writeSlot(offset, slot);
+    else this.instances[offset + 9] = PLACEHOLDER;
+    this.instances[offset + 10] = 0;
+  }
+
+  /** `rect` drawn through `effect` from the snapshot in `slot`, reaching `pad` past its edges. */
+  effectQuad(rect: Rect, slot: AtlasSlot, effect: Effect, pad: number, params: readonly number[]) {
+    const offset = this.next(effect);
+    this.writeRect(offset, rect);
+    this.writeSlot(offset, slot);
+    this.instances[offset + 10] = pad;
+    this.instances.set(params, offset + 12);
+  }
+
+  /** An outline `width` CSS pixels wide just outside `rect`, in a premultiplied color. */
+  ring(rect: Rect, color: readonly number[], width: number) {
+    const offset = this.next(null);
+    this.writeRect(offset, rect);
+    this.instances.set(color, offset + 4);
+    this.instances[offset + 9] = RING;
+    this.instances[offset + 10] = width;
+  }
+
+  /** Draws the quads listed since `begin`. */
   draw(
     camera: Camera,
     cssWidth: number,
     cssHeight: number,
     dpr: number,
-    count: number,
-    runs: readonly Run[],
     /** Seconds since start, pointer and press in world units, seconds since the press. */
     effects: { time: number; pointer: Point; press: Point; sincePress: number },
   ) {
-    const { device } = this;
+    const { device, count, runs } = this;
     this.uniformData.set([
       cssWidth,
       cssHeight,
@@ -198,7 +260,7 @@ export class CompositeRenderer {
       pass.setBindGroup(0, this.bindGroup);
       pass.setVertexBuffer(0, this.instanceBuffer);
       let current: GPURenderPipeline | null = null;
-      for (const run of runs.length ? runs : [{ effect: null, start: 0, count }]) {
+      for (const run of runs) {
         const pipeline = (run.effect && this.effects.get(run.effect)) || this.pipeline;
         if (pipeline !== current) pass.setPipeline((current = pipeline));
         pass.draw(4, run.count, 0, run.start);

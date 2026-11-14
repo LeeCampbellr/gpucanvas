@@ -1,14 +1,8 @@
-import { screenToWorld, visibleWorldRect, type Point, type Rect } from './camera';
-import {
-  createLayers,
-  layerIn,
-  layerRect,
-  sameLayer,
-  unionRect,
-  type EditorPick,
-  type Layer,
-} from './layers';
+import { rectToScreen, screenToWorld, visibleWorldRect } from './camera';
+import { pointIn } from './input';
+import { createLayers, layerIn, layerRect, sameLayer, type EditorPick, type Layer } from './layers';
 import { createOverlay, guideRect, type Handle } from './overlay';
+import { unionOf, type Point, type Rect } from './rect';
 import { snapRect, type Guide } from './snap';
 import { DEFAULT_SELECTION_COLOR, type GpuCanvas } from './types';
 
@@ -120,6 +114,10 @@ export function createMarquee(
   };
 }
 
+/** The editor's own label: the tag name inside nodes, nothing for nodes. */
+export const defaultLabel = (canvas: GpuCanvas) => (layer: Layer) =>
+  canvas.getNodeOf(layer[0]) === layer[0] ? null : layer[0].localName;
+
 /** How far a press may move and still count as a click, in CSS pixels. */
 const CLICK_SLOP = 4;
 /** How close an edge has to come to snap, in CSS pixels. */
@@ -173,9 +171,7 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
     onChange,
     onTransform,
   } = options;
-  const label =
-    options.label ??
-    ((layer: Layer) => (canvas.getNodeOf(layer[0]) === layer[0] ? null : layer[0].localName));
+  const label = options.label ?? defaultLabel(canvas);
   const { surface } = canvas;
   const layers = createLayers(canvas, pick);
   const transforms = !!onTransform && trigger === 'click';
@@ -212,10 +208,7 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
     canvas.setHover(layer?.[0] ?? null);
     draw();
   };
-  const at = (event: MouseEvent): Point => {
-    const bounds = surface.getBoundingClientRect();
-    return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
-  };
+  const at = (event: MouseEvent) => pointIn(surface, event);
   const chainAt = (point: Point) => layers.chainAt(canvas.screenToWorld(point));
   /** The text field, select or contenteditable under a surface point. */
   const fieldAt = (point: Point) => {
@@ -253,16 +246,7 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
   const draw = () => {
     if (!frame) frame = requestAnimationFrame(render);
   };
-  const toScreen = (rect: Rect): Rect => {
-    const { x, y } = canvas.worldToScreen(rect);
-    const zoom = canvas.getCamera().zoom;
-    return { x, y, width: rect.width * zoom, height: rect.height * zoom };
-  };
-  const unionOf = (rects: (Rect | null)[]) =>
-    rects.reduce<Rect | null>(
-      (union, rect) => (!rect ? union : union ? unionRect(union, rect) : rect),
-      null,
-    );
+  const toScreen = (rect: Rect) => rectToScreen(canvas.getCamera(), rect);
   const render = () => {
     frame = 0;
     const transforming = gesture?.kind === 'move' || gesture?.kind === 'resize' ? gesture : null;

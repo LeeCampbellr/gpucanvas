@@ -1,5 +1,6 @@
-import type { Point, Rect } from './camera';
-import type { GpuCanvas } from './types';
+import { rectToScreen } from './camera';
+import type { Point, Rect } from './rect';
+import { DEFAULT_SELECTION_COLOR, type GpuCanvas } from './types';
 
 /** Something drawn above the nodes. `remove` takes it off the canvas. */
 export interface Mark {
@@ -35,7 +36,7 @@ const pillStyle = (color: string) => ({
  * element (what an agent is talking about), and live cursors. They follow the camera and the
  * elements they are attached to, and stay the same size on screen at any zoom.
  */
-export function createMarks(canvas: GpuCanvas, { color = '#4f8cff' } = {}) {
+export function createMarks(canvas: GpuCanvas, { color = DEFAULT_SELECTION_COLOR } = {}) {
   const id = `gpucanvas-marks-${++instances}`;
   const root = document.createElement('div');
   Object.assign(root.style, {
@@ -81,11 +82,7 @@ export function createMarks(canvas: GpuCanvas, { color = '#4f8cff' } = {}) {
   };
 
   const toScreen = (point: Point) => canvas.worldToScreen(point);
-  const screenRect = (rect: Rect): Rect => {
-    const a = toScreen(rect);
-    const b = toScreen({ x: rect.x + rect.width, y: rect.y + rect.height });
-    return { x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y };
-  };
+  const screenRect = (rect: Rect) => rectToScreen(canvas.getCamera(), rect);
   /** A target's world rect: an element's box, or a point as an empty rect. */
   const worldRect = (target: Target): Rect | null =>
     target instanceof Element

@@ -4,7 +4,8 @@ import type { GpuCanvas, GpuCanvasOptions } from './types';
 
 export type { AgentElement, AgentView, DescribeOptions } from './agent';
 export { createAgentView } from './agent';
-export type { Camera, Point, Rect } from './camera';
+export type { Camera } from './camera';
+export type { Point, Rect } from './rect';
 export { fitCamera, screenToWorld, worldToScreen, zoomAt } from './camera';
 export type { Editor, EditorOptions, TransformEvent } from './editor';
 export { bindEditor } from './editor';

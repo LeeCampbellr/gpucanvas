@@ -1,4 +1,4 @@
-import type { Point, Rect } from './camera';
+import type { Point, Rect } from './rect';
 
 /*
  * Elements inside nodes. A node's layout stays current even while its page is parked, so an

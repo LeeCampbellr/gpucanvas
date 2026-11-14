@@ -1,4 +1,5 @@
-import { visibleWorldRect, type Rect } from './camera';
+import { visibleWorldRect } from './camera';
+import { sameRect, type Rect } from './rect';
 import type { GpuCanvas } from './types';
 
 /** One element as an agent reads it: what it is, what it says, and where it sits on the canvas. */
@@ -81,12 +82,6 @@ const labelText = (element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectE
   }
   return text.replace(/\s+/g, ' ').trim();
 };
-
-const sameRect = (a: Rect, b: Rect) =>
-  Math.abs(a.x - b.x) < 0.5 &&
-  Math.abs(a.y - b.y) < 0.5 &&
-  Math.abs(a.width - b.width) < 0.5 &&
-  Math.abs(a.height - b.height) < 0.5;
 
 const round = (rect: Rect): Rect => ({
   x: Math.round(rect.x),

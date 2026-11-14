@@ -77,10 +77,6 @@ export class Atlas {
   /** The layer `allocatePinned` fills; it is never recycled. */
   readonly pinned = 0;
 
-  get layerCount() {
-    return this.layers.length;
-  }
-
   get usedLayers() {
     return this.layers.filter((layer, index) => index !== this.spare && layer.nextY > 0).length;
   }

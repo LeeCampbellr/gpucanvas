@@ -1,4 +1,4 @@
-import { intersects, type Point, type Rect } from './camera';
+import { intersects, sameRect, unionOf, type Point, type Rect } from './rect';
 import type { GpuCanvas } from './types';
 
 /**
@@ -22,33 +22,8 @@ export const layerIn = (layer: Layer, list: readonly Layer[]) =>
   list.some((other) => sameLayer(layer, other));
 
 /** The union of a layer's elements in world units, or null when none is on the canvas. */
-export function layerRect(canvas: GpuCanvas, layer: Layer): Rect | null {
-  let union: Rect | null = null;
-  for (const element of layer) {
-    const rect = canvas.getElementRect(element);
-    if (rect) union = union ? unionRect(union, rect) : rect;
-  }
-  return union;
-}
-
-export function unionRect(a: Rect, b: Rect): Rect {
-  const x = Math.min(a.x, b.x);
-  const y = Math.min(a.y, b.y);
-  return {
-    x,
-    y,
-    width: Math.max(a.x + a.width, b.x + b.width) - x,
-    height: Math.max(a.y + a.height, b.y + b.height) - y,
-  };
-}
-
-const sameRect = (a: Rect | null, b: Rect | null) =>
-  !!a &&
-  !!b &&
-  Math.abs(a.x - b.x) < 0.5 &&
-  Math.abs(a.y - b.y) < 0.5 &&
-  Math.abs(a.width - b.width) < 0.5 &&
-  Math.abs(a.height - b.height) < 0.5;
+export const layerRect = (canvas: GpuCanvas, layer: Layer): Rect | null =>
+  unionOf(layer.map((element) => canvas.getElementRect(element)));
 
 /** Every depth a click can reach through the elements and pick of one canvas. */
 export function createLayers(canvas: GpuCanvas, pick: EditorPick) {

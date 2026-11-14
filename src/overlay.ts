@@ -1,4 +1,4 @@
-import type { Rect } from './camera';
+import type { Rect } from './rect';
 import type { Guide } from './snap';
 
 /** Resize handles, by the edges they move. */

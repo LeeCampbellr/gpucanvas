@@ -1,4 +1,4 @@
-import type { Rect } from './camera';
+import type { Rect } from './rect';
 import type { GpuCanvas } from './types';
 
 /** A snapshot as an image file, PNG by default. */
