@@ -32,6 +32,7 @@ export class CompositeRenderer {
   private readonly sampler: GPUSampler;
   /** Effect pipelines, null while one compiles. Compiling never blocks a frame. */
   private readonly effects = new Map<Effect, GPURenderPipeline | null>();
+  private readonly failed = new Set<Effect>();
 
   constructor(
     private readonly device: GPUDevice,
@@ -124,8 +125,16 @@ export class CompositeRenderer {
         this.effects.set(effect, pipeline);
         this.onEffectReady();
       })
-      .catch((error) => console.error(`[gpucanvas] effect "${effect.name}" failed`, error));
+      .catch((error) => {
+        this.failed.add(effect);
+        console.error(`[gpucanvas] effect "${effect.name}" failed`, error);
+      });
     return false;
+  }
+
+  /** Whether `effect`'s pipeline failed to compile; it never draws then. */
+  effectFailed(effect: Effect) {
+    return this.failed.has(effect);
   }
 
   /** Starts a frame with room for at least `capacity` quads. */

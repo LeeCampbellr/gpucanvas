@@ -153,6 +153,7 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
     removeNode(element) {
       clearEffect(element);
       nodes.delete(element);
+      selection.delete(element);
       outlinedNodes.delete(element);
       element.style.outline = '';
       element.remove();

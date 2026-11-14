@@ -226,6 +226,21 @@ export async function createGpuCanvas(
   if (!adapter) throw new Error('gpucanvas: no WebGPU adapter');
   const device = await adapter.requestDevice();
 
+  const canvas = document.createElement('canvas');
+  canvas.setAttribute('content', 'drawable');
+  markSurface(canvas);
+  Object.assign(canvas.style, { display: 'block', width: '100%', height: '100%' });
+  const context = canvas.getContext('webgpu');
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  // Fails before touching the host, so the DOM fallback starts from a clean host.
+  try {
+    if (!context) throw new Error('gpucanvas: no WebGPU canvas context');
+    context.configure({ device, format, alphaMode: 'opaque' });
+  } catch (error) {
+    device.destroy();
+    throw error;
+  }
+
   const base = createBase<GpuNode>(host, options, () => {
     lastCameraChange = performance.now();
     // A moving canvas has no hover; the node under a still pointer becomes live once it rests.
@@ -238,15 +253,7 @@ export async function createGpuCanvas(
     schedule();
   });
   const { surface, nodes } = base;
-  const canvas = document.createElement('canvas');
-  canvas.setAttribute('content', 'drawable');
-  markSurface(canvas);
-  Object.assign(canvas.style, { display: 'block', width: '100%', height: '100%' });
   surface.append(canvas);
-
-  const context = canvas.getContext('webgpu')!;
-  const format = navigator.gpu.getPreferredCanvasFormat();
-  context.configure({ device, format, alphaMode: 'opaque' });
 
   const atlasSize = Math.min(options.atlasSize ?? 4096, device.limits.maxTextureDimension2D);
   // What is on screen survives a full atlas: whole snapshots first, then sharp tiles.
@@ -830,7 +837,8 @@ export async function createGpuCanvas(
       node.shown = shown;
       node.shownFrame = stats.frames;
       const worn = effects.size ? effects.get(node.element) : undefined;
-      if (worn) {
+      // An effect that failed to compile is drawn plain, without asking for more frames.
+      if (worn && !renderer.effectFailed(worn.effect)) {
         if (worn.effect.animated) effectsMoving = true;
         if (base && renderer.hasEffect(worn.effect)) {
           renderer.effectQuad(node.rect, base, worn.effect, worn.pad, worn.params);
@@ -1219,7 +1227,7 @@ export async function createGpuCanvas(
     node.dirty = true;
     schedule();
     setTimeout(() => {
-      if (transitioning.get(node) !== end) return;
+      if (destroyed || transitioning.get(node) !== end) return;
       transitioning.delete(node);
       letGo(node);
       schedule();
@@ -1440,6 +1448,7 @@ export async function createGpuCanvas(
       clearTimeout(settleTimer);
       clearTimeout(lingerTimer);
       clearTimeout(contentTimer);
+      clearTimeout(refreshTimer);
       mutations.disconnect();
       document.fonts.removeEventListener('loadingdone', onFontsLoaded);
       canvas.removeEventListener('load', onResourceLoad, true);

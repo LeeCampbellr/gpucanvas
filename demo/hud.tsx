@@ -528,7 +528,7 @@ export function FlagNotice() {
         'fixed top-20 left-4 z-20 w-[min(26rem,calc(100vw-2rem))] max-sm:top-16 max-sm:left-2 p-4 text-body-2-regular text-text-secondary',
       )}
     >
-      <div className="text-body-1-semibold text-text-primary">You are seeing the DOM fallback</div>
+      <div className="text-body-semibold text-text-primary">You are seeing the DOM fallback</div>
       <p className="mt-1">
         {WEBKIT
           ? 'gpucanvas draws with WebGPU and HTML-in-Canvas, which iPhone and iPad browsers do not have yet. This is the plain DOM version. Open the page in Chrome on a computer or Android to see the GPU one.'
