@@ -1,7 +1,7 @@
-import { rectToScreen, screenToWorld, visibleWorldRect } from './camera';
+import { rectToScreen, screenToWorld, viewOf } from './camera';
 import { pointIn } from './input';
 import { createLayers, layerIn, layerRect, sameLayer, type EditorPick, type Layer } from './layers';
-import { createOverlay, guideRect, type Handle } from './overlay';
+import { createOverlay, guideRect, handleAt, type Handle } from './overlay';
 import { unionOf, type Point, type Rect } from './rect';
 import { snapRect, type Guide } from './snap';
 import { DEFAULT_SELECTION_COLOR, type GpuCanvas } from './types';
@@ -124,6 +124,8 @@ const CLICK_SLOP = 4;
 const SNAP_PX = 6;
 /** Above this many layers the selection shows one size, not each name. */
 const MAX_NAMED = 1;
+/** A world rect around every node, for queries over the whole canvas. */
+const EVERYWHERE: Rect = { x: -1e9, y: -1e9, width: 2e9, height: 2e9 };
 
 const isEditable = (element: Element | null) =>
   !!element &&
@@ -175,7 +177,7 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
   const { surface } = canvas;
   const layers = createLayers(canvas, pick);
   const transforms = !!onTransform && trigger === 'click';
-  const overlay = createOverlay(surface, color, color);
+  const overlay = createOverlay(surface, color);
   let marqueeLayers: Layer[] = [];
   const box = marquee
     ? createMarquee(canvas, color, (world) => {
@@ -270,9 +272,7 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
       bounds: selection.length > 1 || !!transforming,
       handles: transforms && selection.length > 0 && gesture?.kind !== 'marquee',
       guides: transforming
-        ? transforming.guides.map((guide) =>
-            guideRect(guide, (x, y) => canvas.worldToScreen({ x, y })),
-          )
+        ? transforming.guides.map((guide) => guideRect(guide, canvas.getCamera()))
         : [],
     });
     if (selection.length || hovered || gesture) draw();
@@ -295,9 +295,8 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
     if (!snap) return [];
     const scope = scopes.at(-1);
     if (!scope) {
-      const view = visibleWorldRect(canvas.getCamera(), surface.clientWidth, surface.clientHeight);
       return canvas
-        .getNodesIn(view)
+        .getNodesIn(viewOf(canvas))
         .filter((node) => !moving.some((layer) => layer[0] === node))
         .map((node) => canvas.getNodeRect(node)!);
     }
@@ -413,10 +412,10 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
       swallowClick = true;
       surface.setPointerCapture(event.pointerId);
     };
-    const handle = (event.target as Element).closest?.<HTMLElement>('[data-gpucanvas-handle]');
+    const handle = handleAt(event.target);
     if (handle && transforms) {
       take();
-      return beginTransform(point, handle.dataset.gpucanvasHandle as Handle);
+      return beginTransform(point, handle);
     }
     const target = targetIn(chainAt(point));
     if (!target) {
@@ -567,7 +566,7 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
       const scope = scopes.at(-1);
       const siblings = scope
         ? layers.childrenOf(scope)
-        : canvas.getNodesIn({ x: -1e9, y: -1e9, width: 2e9, height: 2e9 }).map((node) => [node]);
+        : canvas.getNodesIn(EVERYWHERE).map((node) => [node]);
       const index = siblings.findIndex((layer) => sameLayer(layer, selection[0]));
       const step = event.shiftKey ? -1 : 1;
       const next = siblings[(index + step + siblings.length) % siblings.length];

@@ -1,13 +1,10 @@
 import type { Atlas, AtlasSlot } from './atlas';
 import type { Camera } from './camera';
 import type { Point, Rect } from './rect';
-import { compositeShader, effectShader } from './composite-shader';
+import { compositeShader, effectShader, KIND } from './composite-shader';
 import type { Effect } from './effects';
 
 const FLOATS_PER_INSTANCE = 16;
-const SNAPSHOT = 0;
-const PLACEHOLDER = 1;
-const RING = 2;
 
 /** Consecutive instances drawn with one effect's pipeline, or the plain one (`effect` null). */
 interface Run {
@@ -35,16 +32,16 @@ export class CompositeRenderer {
   private readonly sampler: GPUSampler;
   /** Effect pipelines, null while one compiles. Compiling never blocks a frame. */
   private readonly effects = new Map<Effect, GPURenderPipeline | null>();
-  /** Called when an effect pipeline is ready, so the caller can draw it. */
-  onEffectReady: () => void = () => {};
 
   constructor(
     private readonly device: GPUDevice,
     private readonly context: GPUCanvasContext,
-    format: GPUTextureFormat,
+    private readonly format: GPUTextureFormat,
     private readonly atlas: Atlas,
     public background: [number, number, number, number],
     public placeholder: [number, number, number, number],
+    /** Called when an effect pipeline is ready, so the caller can draw it. */
+    private readonly onEffectReady: () => void,
   ) {
     this.bindGroupLayout = device.createBindGroupLayout({
       entries: [
@@ -59,9 +56,8 @@ export class CompositeRenderer {
     });
     this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
     this.pipeline = device.createRenderPipeline(
-      this.pipelineDescriptor('gpucanvas composite', compositeShader, format),
+      this.pipelineDescriptor('gpucanvas composite', compositeShader),
     );
-    this.format = format;
     this.uniforms = device.createBuffer({
       size: this.uniformData.byteLength,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -77,13 +73,7 @@ export class CompositeRenderer {
     this.instanceBuffer = this.createInstanceBuffer();
   }
 
-  private readonly format: GPUTextureFormat;
-
-  private pipelineDescriptor(
-    label: string,
-    code: string,
-    format: GPUTextureFormat,
-  ): GPURenderPipelineDescriptor {
+  private pipelineDescriptor(label: string, code: string): GPURenderPipelineDescriptor {
     const module = this.device.createShaderModule({ label, code });
     return {
       label,
@@ -109,7 +99,7 @@ export class CompositeRenderer {
         entryPoint: 'fs',
         targets: [
           {
-            format,
+            format: this.format,
             // Snapshots are requested premultiplied.
             blend: {
               color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
@@ -128,11 +118,7 @@ export class CompositeRenderer {
     this.effects.set(effect, null);
     this.device
       .createRenderPipelineAsync(
-        this.pipelineDescriptor(
-          `gpucanvas effect ${effect.name}`,
-          effectShader(effect.wgsl),
-          this.format,
-        ),
+        this.pipelineDescriptor(`gpucanvas effect ${effect.name}`, effectShader(effect.wgsl)),
       )
       .then((pipeline) => {
         this.effects.set(effect, pipeline);
@@ -178,7 +164,7 @@ export class CompositeRenderer {
     data[offset + 6] = slot.x + slot.width;
     data[offset + 7] = slot.y + slot.height;
     data[offset + 8] = slot.layer;
-    data[offset + 9] = SNAPSHOT;
+    data[offset + 9] = KIND.snapshot;
   }
 
   /** `rect` showing the snapshot in `slot`, or the placeholder color while there is none. */
@@ -186,7 +172,7 @@ export class CompositeRenderer {
     const offset = this.next(null);
     this.writeRect(offset, rect);
     if (slot) this.writeSlot(offset, slot);
-    else this.instances[offset + 9] = PLACEHOLDER;
+    else this.instances[offset + 9] = KIND.placeholder;
     this.instances[offset + 10] = 0;
   }
 
@@ -204,7 +190,7 @@ export class CompositeRenderer {
     const offset = this.next(null);
     this.writeRect(offset, rect);
     this.instances.set(color, offset + 4);
-    this.instances[offset + 9] = RING;
+    this.instances[offset + 9] = KIND.ring;
     this.instances[offset + 10] = width;
   }
 

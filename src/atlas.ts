@@ -1,3 +1,5 @@
+import { Shelves } from './shelves';
+
 /** A rectangle in one layer of the atlas texture array, in texels. */
 export interface AtlasSlot {
   layer: number;
@@ -9,15 +11,8 @@ export interface AtlasSlot {
   generation: number;
 }
 
-interface Shelf {
-  y: number;
-  height: number;
-  x: number;
-}
-
 interface Layer {
-  shelves: Shelf[];
-  nextY: number;
+  shelves: Shelves;
   generation: number;
   /** Frame number of the last allocation in, or draw from, this layer; the stalest is evicted. */
   lastUsed: number;
@@ -41,8 +36,6 @@ export class Atlas {
   readonly texture: GPUTexture;
   readonly view: GPUTextureView;
   readonly size: number;
-  /** Slots to rescue when their layer is recycled, most important first. */
-  keep: () => Iterable<AtlasSlot | null> = () => [];
   private layers: Layer[];
   private spare: number;
   private frame = 0;
@@ -51,6 +44,8 @@ export class Atlas {
     private readonly device: GPUDevice,
     size: number,
     layerCount: number,
+    /** Slots to rescue when their layer is recycled, most important first. */
+    private readonly keep: () => Iterable<AtlasSlot | null>,
   ) {
     this.size = size;
     this.texture = device.createTexture({
@@ -65,8 +60,7 @@ export class Atlas {
     });
     this.view = this.texture.createView({ dimension: '2d-array' });
     this.layers = Array.from({ length: layerCount }, () => ({
-      shelves: [],
-      nextY: 0,
+      shelves: new Shelves(size, size, 1.5),
       generation: 0,
       lastUsed: -1,
       lastAllocated: -1,
@@ -78,12 +72,13 @@ export class Atlas {
   readonly pinned = 0;
 
   get usedLayers() {
-    return this.layers.filter((layer, index) => index !== this.spare && layer.nextY > 0).length;
+    return this.layers.filter((layer, index) => index !== this.spare && layer.shelves.filled > 0)
+      .length;
   }
 
   /** How much of the pinned layer is taken, 0 to 1. */
   get pinnedFill() {
-    return this.layers[this.pinned].nextY / this.size;
+    return this.layers[this.pinned].shelves.filled / this.size;
   }
 
   nextFrame() {
@@ -169,25 +164,16 @@ export class Atlas {
 
   private allocateIn(index: number, w: number, h: number): AtlasSlot | null {
     const layer = this.layers[index];
-    let shelf = layer.shelves.find(
-      (candidate) =>
-        candidate.height >= h && candidate.height <= h * 1.5 && candidate.x + w <= this.size,
-    );
-    if (!shelf) {
-      if (layer.nextY + h > this.size) return null;
-      shelf = { y: layer.nextY, height: h, x: 0 };
-      layer.shelves.push(shelf);
-      layer.nextY += h;
-    }
+    const at = layer.shelves.place(w, h);
+    if (!at) return null;
     const slot = {
       layer: index,
-      x: shelf.x,
-      y: shelf.y,
+      x: at.x,
+      y: at.y,
       width: w - PADDING,
       height: h - PADDING,
       generation: layer.generation,
     };
-    shelf.x += w;
     layer.lastUsed = this.frame;
     layer.lastAllocated = this.frame;
     return slot;
@@ -195,8 +181,7 @@ export class Atlas {
 
   private evict(index: number) {
     const layer = this.layers[index];
-    layer.shelves = [];
-    layer.nextY = 0;
+    layer.shelves.clear();
     layer.generation++;
   }
 

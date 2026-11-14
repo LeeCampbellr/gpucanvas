@@ -1,6 +1,13 @@
 import { zoomAt, type Camera } from './camera';
 import type { Point } from './rect';
 
+/** Marks the surface and the elements under it that count as empty canvas, where drags pan. */
+export const markSurface = (element: HTMLElement) => {
+  element.dataset.gpucanvasSurface = '';
+};
+const isSurface = (target: EventTarget | null) =>
+  target instanceof Element && target.hasAttribute('data-gpucanvas-surface');
+
 /** Where a pointer event lands on `element`, in its CSS pixels from the top left. */
 export const pointIn = (element: Element, event: MouseEvent): Point => {
   const bounds = element.getBoundingClientRect();
@@ -58,11 +65,7 @@ export function bindCameraInput(
     // Only drags that start on the canvas background pan; nodes keep their own pointer events.
     // Shift-drags are left to the app, for a selection box.
     if ((event.button !== 0 && event.button !== 1) || event.shiftKey) return;
-    if (
-      event.target !== element &&
-      !(event.target as Element).hasAttribute?.('data-gpucanvas-surface')
-    )
-      return;
+    if (!isSurface(event.target)) return;
     drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
     element.setPointerCapture(event.pointerId);
   };

@@ -10,6 +10,11 @@ export interface Point {
   y: number;
 }
 
+export const center = (rect: Rect): Point => ({
+  x: rect.x + rect.width / 2,
+  y: rect.y + rect.height / 2,
+});
+
 export const containsPoint = (rect: Rect, point: Point) =>
   point.x >= rect.x &&
   point.x < rect.x + rect.width &&

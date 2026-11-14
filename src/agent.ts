@@ -1,4 +1,4 @@
-import { visibleWorldRect } from './camera';
+import { viewOf } from './camera';
 import { sameRect, type Rect } from './rect';
 import type { GpuCanvas } from './types';
 
@@ -160,13 +160,7 @@ export function createAgentView(canvas: GpuCanvas) {
   return {
     /** What is in `rect` (default: the view), node by node, as plain JSON. */
     describe(options: DescribeOptions = {}): AgentElement[] {
-      const area =
-        options.rect ??
-        visibleWorldRect(
-          canvas.getCamera(),
-          canvas.surface.clientWidth,
-          canvas.surface.clientHeight,
-        );
+      const area = options.rect ?? viewOf(canvas);
       return canvas.getNodesIn(area).flatMap((node) => read(node, options.depth ?? 6, options));
     },
 
@@ -192,7 +186,7 @@ export function createAgentView(canvas: GpuCanvas) {
     ): Promise<ImageData> {
       const area = typeof target === 'object' && 'width' in target ? target : this.rect(target);
       if (!area) throw new Error('Nothing to capture');
-      // Large regions come back smaller rather than failing.
+      // Large regions come back smaller rather than failing: 8192 is WebGPU's default texture limit.
       const fit = Math.min(scale, 8192 / area.width, 8192 / area.height);
       const width = Math.max(1, Math.round(area.width * fit));
       const height = Math.max(1, Math.round(area.height * fit));

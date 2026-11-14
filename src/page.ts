@@ -1,3 +1,5 @@
+import { Shelves } from './shelves';
+
 /**
  * A page is one `drawable` container holding many nodes, laid out side by side in CSS pixels.
  * The browser records a page as one snapshot, so a single `drawElementImageToTexture` call can
@@ -9,13 +11,7 @@
 /** Space between nodes on a page, so filtering at a node's edge never reads its neighbor. */
 const GAP = 4;
 
-interface Shelf {
-  y: number;
-  height: number;
-  x: number;
-}
-
-export interface PageSlot {
+interface PageSlot {
   page: Page;
   x: number;
   y: number;
@@ -25,21 +21,19 @@ export class Page {
   readonly element: HTMLDivElement;
   readonly width: number;
   readonly height: number;
-  count = 0;
   /** Has the `drawable` attribute and is rendered; parked pages use `content-visibility: hidden`. */
   drawable = false;
   /** Frame in which the page became drawable. Its snapshot exists from that frame's paint on. */
   promotedFrame = -1;
-  /** Kept drawable for the live (hit-testable) or focused node. */
-  pinned = false;
   /** Registered for hit testing with `updateElementGeometry`. */
   registered = false;
-  private shelves: Shelf[] = [];
-  private nextY = 0;
+  private readonly shelves: Shelves;
 
   constructor(width: number, height: number) {
     this.width = width;
     this.height = height;
+    // A node may end flush with the page edge: its gap would fall outside.
+    this.shelves = new Shelves(width + GAP, height + GAP, 1.25);
     this.element = document.createElement('div');
     this.element.dataset.gpucanvasPage = '';
     Object.assign(this.element.style, {
@@ -59,29 +53,8 @@ export class Page {
 
   /** Reserves a spot for a `width` x `height` node, or returns null when the page is full. */
   place(width: number, height: number): PageSlot | null {
-    const w = Math.ceil(width) + GAP;
-    const h = Math.ceil(height) + GAP;
-    if (w > this.width + GAP || h > this.height + GAP) return null;
-    let shelf = this.shelves.find(
-      (candidate) =>
-        candidate.height >= h &&
-        candidate.height <= h * 1.25 &&
-        candidate.x + w <= this.width + GAP,
-    );
-    if (!shelf) {
-      if (this.nextY + h > this.height + GAP) return null;
-      shelf = { y: this.nextY, height: h, x: 0 };
-      this.shelves.push(shelf);
-      this.nextY += h;
-    }
-    const slot = { page: this, x: shelf.x, y: shelf.y };
-    shelf.x += w;
-    this.count++;
-    return slot;
-  }
-
-  release() {
-    this.count--;
+    const at = this.shelves.place(Math.ceil(width) + GAP, Math.ceil(height) + GAP);
+    return at && { page: this, ...at };
   }
 
   setDrawable(drawable: boolean, frame: number) {

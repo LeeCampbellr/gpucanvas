@@ -102,5 +102,3 @@ export function createLayers(canvas: GpuCanvas, pick: EditorPick) {
 
   return { chainOf, chainAt, childrenOf, layersIn };
 }
-
-export type Layers = ReturnType<typeof createLayers>;

@@ -9,7 +9,7 @@ export interface Guide {
 }
 
 /** Fractions of a rect's width or height that snap: its start, middle and end. */
-export const ALL_ANCHORS = [0, 0.5, 1];
+const ALL_ANCHORS = [0, 0.5, 1];
 
 const anchorsX = (rect: Rect) => ALL_ANCHORS.map((f) => rect.x + rect.width * f);
 const anchorsY = (rect: Rect) => ALL_ANCHORS.map((f) => rect.y + rect.height * f);

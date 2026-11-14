@@ -1,8 +1,9 @@
+import { worldToScreen, type Camera } from './camera';
 import type { Rect } from './rect';
 import type { Guide } from './snap';
 
 /** Resize handles, by the edges they move. */
-export const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const;
+const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const;
 export type Handle = (typeof HANDLES)[number];
 
 const HANDLE_PX = 8;
@@ -18,7 +19,7 @@ const CURSORS: Record<Handle, string> = {
 };
 
 /** What the overlay shows this frame, in surface pixels. */
-export interface OverlayState {
+interface OverlayState {
   hover: { rect: Rect; name: string | null } | null;
   /** `size` is in world units: what the selection measures, at any zoom. */
   selection: { rect: Rect; size: Rect; name: string | null; count: number } | null;
@@ -43,7 +44,7 @@ const pill = (color: string) => ({
  * The editor's chrome above the canvas: names and sizes, a frame and handles around the
  * selection, and snapping guides. Outlines themselves are drawn by the canvas.
  */
-export function createOverlay(surface: HTMLElement, color: string, hoverColor: string) {
+export function createOverlay(surface: HTMLElement, color: string) {
   const root = document.createElement('div');
   Object.assign(root.style, {
     position: 'absolute',
@@ -58,7 +59,7 @@ export function createOverlay(surface: HTMLElement, color: string, hoverColor: s
     root.append(element);
     return element;
   };
-  const hoverName = make(pill(hoverColor));
+  const hoverName = make(pill(color));
   const name = make(pill(color));
   const size = make(pill(color));
   const bounds = make({ position: 'absolute', border: `1px solid ${color}` });
@@ -148,13 +149,17 @@ export function createOverlay(surface: HTMLElement, color: string, hoverColor: s
   };
 }
 
+/** The resize handle an event target is, if any. */
+export const handleAt = (target: EventTarget | null): Handle | null =>
+  target instanceof Element
+    ? ((target.closest<HTMLElement>('[data-gpucanvas-handle]')?.dataset
+        .gpucanvasHandle as Handle) ?? null)
+    : null;
+
 /** A world guide as a one-pixel rect in surface pixels. */
-export const guideRect = (
-  guide: Guide,
-  toScreen: (x: number, y: number) => { x: number; y: number },
-): Rect => {
-  const a = toScreen(guide.x1, guide.y1);
-  const b = toScreen(guide.x2, guide.y2);
+export const guideRect = (guide: Guide, camera: Camera): Rect => {
+  const a = worldToScreen(camera, { x: guide.x1, y: guide.y1 });
+  const b = worldToScreen(camera, { x: guide.x2, y: guide.y2 });
   return {
     x: Math.min(a.x, b.x),
     y: Math.min(a.y, b.y),

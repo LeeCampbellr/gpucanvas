@@ -8,6 +8,10 @@
  * fragment shader takes up to 4 x 4 samples spread over the pixel's footprint (a box filter),
  * clamped to the node's own atlas rectangle so neighbors never bleed in.
  */
+/** What a quad draws, in its `info.y`. The shader compares halfway between kinds: they are floats. */
+export const KIND = { snapshot: 0, placeholder: 1, ring: 2 };
+
+/** `View` is written by CompositeRenderer.draw in this order, `Instance` by its quad methods. */
 const prelude = /* wgsl */ `
 struct View {
   size: vec2f,        // canvas size in CSS pixels
@@ -48,7 +52,7 @@ struct Varyings {
 fn vs(@builtin(vertex_index) vertex: u32, instance: Instance) -> Varyings {
   let corner = vec2f(f32(vertex & 1u), f32(vertex >> 1u));
   // A ring's quad reaches past its element by the ring's width, an effect's by its padding.
-  let ring = instance.info.y > 1.5;
+  let ring = instance.info.y > ${KIND.ring - 0.5};
   let grow = select(instance.info.z, instance.info.z / view.zoom, ring);
   let start = instance.rect.xy - grow;
   let end = instance.rect.xy + instance.rect.zw + grow;
@@ -87,12 +91,12 @@ fn fs(in: Varyings) -> @location(0) vec4f {
   // Derivatives first: WGSL only allows them in uniform control flow.
   let dx = dpdx(in.texel);
   let dy = dpdy(in.texel);
-  if (in.info.y > 1.5) {
+  if (in.info.y > ${KIND.ring - 0.5}) {
     // The ring covers what lies outside the element; the element itself shows through.
     let outside = max(in.bounds.xy - in.texel, in.texel - in.bounds.zw);
     return select(vec4f(0.0), in.color, max(outside.x, outside.y) > 0.0);
   }
-  if (in.info.y > 0.5) {
+  if (in.info.y > ${KIND.placeholder - 0.5}) {
     return view.placeholder;
   }
   let layer = i32(in.info.x);

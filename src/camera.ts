@@ -52,6 +52,10 @@ export function visibleWorldRect(
   };
 }
 
+/** The world rect a canvas shows now. */
+export const viewOf = (canvas: { getCamera(): Camera; surface: HTMLElement }) =>
+  visibleWorldRect(canvas.getCamera(), canvas.surface.clientWidth, canvas.surface.clientHeight);
+
 /** Fits `bounds` into the viewport with `padding` CSS pixels on each side. */
 export function fitCamera(
   bounds: Rect,

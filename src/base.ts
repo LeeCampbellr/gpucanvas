@@ -1,6 +1,6 @@
-import { fitCamera, screenToWorld, visibleWorldRect, worldToScreen, type Camera } from './camera';
+import { fitCamera, screenToWorld, viewOf, worldToScreen, type Camera } from './camera';
 import { elementInNode, nodeOfElement } from './elements';
-import { bindCameraInput } from './input';
+import { bindCameraInput, markSurface } from './input';
 import { containsPoint, intersects, unionOf, type Point, type Rect } from './rect';
 import { DEFAULT_CAMERA, type GpuCanvas, type GpuCanvasOptions } from './types';
 
@@ -8,11 +8,6 @@ export interface BaseNode {
   element: HTMLElement;
   rect: Rect;
 }
-
-/** Marks the surface and the elements under it that count as empty canvas, where drags pan. */
-export const markSurface = (element: HTMLElement) => {
-  element.dataset.gpucanvasSurface = '';
-};
 
 /** Styles every node gets: containment keeps one node's changes from relaying out the others. */
 export const styleNode = (element: HTMLElement) =>
@@ -47,7 +42,6 @@ export function createBase<N extends BaseNode>(
   };
   const unbindInput = bindCameraInput(surface, () => camera, setCamera);
 
-  const view = () => visibleWorldRect(camera, surface.clientWidth, surface.clientHeight);
   /** The topmost node at a world point: the last one added draws on top. */
   const nodeAt = (point: Point): N | null => {
     let top: N | null = null;
@@ -85,7 +79,7 @@ export function createBase<N extends BaseNode>(
     surface,
     nodes,
     camera: () => camera,
-    view,
+    view: () => viewOf(api),
     nodeAt,
     api,
     destroy() {
