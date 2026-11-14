@@ -14,7 +14,7 @@ import { nodeClass } from './bench';
  * it, in loose columns with stickies, comments and arrows around. A seeded generator lays it out, so
  * every load, and both modes of the benchmark, see the same canvas.
  */
-export interface Item {
+interface Item {
   rect: Rect;
   render: () => ReactNode;
   /** A desktop or phone product screen, as opposed to a note, comment or other annotation. */
@@ -23,7 +23,7 @@ export interface Item {
   name?: string;
 }
 
-export interface Cluster {
+interface Cluster {
   items: Item[];
   bounds: Rect;
 }

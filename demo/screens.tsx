@@ -65,22 +65,22 @@ import {
   useToasts,
   type Day,
 } from './ui';
-import { PEOPLE, type Entry, type Product } from './products';
+import { PEOPLE, person, type Entry, type Product } from './products';
 
 /**
  * Product screens made of the demo's own components (ui.tsx), the way they sit on a design canvas: the
  * frame's name above a framed screen. A layout takes a product and a seed, so every cluster
  * shows its own brand, copy and numbers. Every screen is one canvas node and fully interactive.
  */
-export const DESKTOP = { width: 1440, height: 900 };
+const DESKTOP = { width: 1440, height: 900 };
 export const PHONE = { width: 402, height: 874 };
 /** Room above the frame for its name. */
-export const LABEL = 30;
+const LABEL = 30;
 /**
  * Room around the frame for its shadow. A node's snapshot ends at its box, so anything that
  * should show, shadows included, stays inside it.
  */
-export const BLEED = 28;
+const BLEED = 28;
 
 type Props = { product: Product; seed: number };
 
@@ -323,7 +323,7 @@ function Cover({
 /* ----- Desktop chrome ----------------------------------------------------------------------- */
 
 function Sidebar({ product, active = 0 }: { product: Product; active?: number }) {
-  const [name, src] = PEOPLE[product.name.length % PEOPLE.length];
+  const [name, src] = person(product.name.length);
   return (
     <aside className="flex w-[232px] shrink-0 flex-col gap-1 border-e border-border-button-default bg-background-secondary-default p-4">
       <div className="mb-5 px-2">
@@ -420,7 +420,7 @@ const scaled = (value: string, factor: number) =>
 function Dashboard({ product, seed }: Props) {
   const [range, setRange] = useState(new Set(['30d']));
   const current = RANGES[[...range][0]] ?? RANGES['30d'];
-  const [name] = PEOPLE[seed % PEOPLE.length];
+  const [name] = person(seed);
   return (
     <AppPage
       product={product}
@@ -562,7 +562,7 @@ function ListPage({ product, seed }: Props) {
         </TableHeader>
         <TableBody>
           {shown.map((entry, index) => {
-            const [name, src] = PEOPLE[(seed + index) % PEOPLE.length];
+            const [name, src] = person(seed + index);
             return (
               <TableRow key={entry.title} id={entry.title}>
                 <TableCell>
@@ -609,7 +609,7 @@ function Board({ product, seed }: Props) {
         entry,
         column: c,
         cover: (c + i + seed) % 4 === 0,
-        person: PEOPLE[(c * 3 + i + seed) % PEOPLE.length],
+        person: person(c * 3 + i + seed),
       })),
     );
   });
@@ -632,7 +632,7 @@ function Board({ product, seed }: Props) {
           sub: `Added just now`,
           column: 0,
           cover: false,
-          person: PEOPLE[(seed + added) % PEOPLE.length],
+          person: person(seed + added),
         },
         ...all,
       ];
@@ -1030,9 +1030,9 @@ function CalendarPage({ product, seed }: Props) {
 }
 
 function SettingsPage({ product, seed }: Props) {
-  const [name] = PEOPLE[seed % PEOPLE.length];
+  const [name] = person(seed);
   const [photo, setPhoto] = useState(seed);
-  const src = PEOPLE[photo % PEOPLE.length][1];
+  const src = person(photo)[1];
   const [toggles, setToggles] = useState([true, false, true]);
   return (
     <AppPage
@@ -1126,9 +1126,7 @@ function SignIn({ product, seed }: Props) {
           <p className="text-title-3-medium">
             "{product.tagline}. We switched our whole team to {product.name} in a week."
           </p>
-          <p className="mt-3 text-body-2-regular text-white/80">
-            {PEOPLE[seed % PEOPLE.length][0]}
-          </p>
+          <p className="mt-3 text-body-2-regular text-white/80">{person(seed)[0]}</p>
         </div>
       </div>
     </div>
@@ -1296,7 +1294,7 @@ function Messages({ product, seed }: Props) {
   const [draft, setDraft] = useState('');
   const [sent, setSent] = useState<{ mine: boolean; text: string }[]>([]);
   const [typing, setTyping] = useState(true);
-  const [name, src] = PEOPLE[(seed + 2) % PEOPLE.length];
+  const [name, src] = person(seed + 2);
   const send = () => {
     const text = draft.trim();
     if (!text) return;
@@ -1315,7 +1313,7 @@ function Messages({ product, seed }: Props) {
       <div className="flex w-[340px] shrink-0 flex-col gap-1 border-e border-border-button-default p-4">
         <span className="mb-2 px-2 text-title-3-semibold text-text-primary">Messages</span>
         {threads.map((entry, i) => {
-          const [person, avatar] = PEOPLE[(seed + i + 2) % PEOPLE.length];
+          const [name, avatar] = person(seed + i + 2);
           return (
             <div
               key={entry.title}
@@ -1324,9 +1322,9 @@ function Messages({ product, seed }: Props) {
                 i === 0 && 'bg-accent-50 dark:bg-accent-950',
               )}
             >
-              <Avatar size="sm" src={avatar} alt={person} />
+              <Avatar size="sm" src={avatar} alt={name} />
               <div className="flex min-w-0 flex-col">
-                <span className="text-body-2-medium text-text-primary">{person}</span>
+                <span className="text-body-2-medium text-text-primary">{name}</span>
                 <span className="truncate text-caption-1-regular text-text-tertiary">
                   About {entry.title}
                 </span>
@@ -1471,7 +1469,7 @@ function Row({ entry, product, seed }: { entry: Entry } & Props) {
 /* ----- Phone screens ------------------------------------------------------------------------ */
 
 function PhoneHome({ product, seed }: Props) {
-  const [name] = PEOPLE[seed % PEOPLE.length];
+  const [name] = person(seed);
   return (
     <Phone tab={0}>
       <div className="flex items-center justify-between pt-2">
@@ -1636,7 +1634,7 @@ function PhoneChat({ product, seed }: Props) {
 }
 
 function PhoneProfile({ product, seed }: Props) {
-  const [name, src] = PEOPLE[(seed + 3) % PEOPLE.length];
+  const [name, src] = person(seed + 3);
   const [on, setOn] = useState([true, false, true]);
   return (
     <Phone title="Profile" tab={3}>
@@ -1979,7 +1977,7 @@ function Frame({
 
 type Screen = (props: Props) => ReactNode;
 
-export const DESKTOP_SCREENS: Record<string, Screen> = {
+const DESKTOP_SCREENS: Record<string, Screen> = {
   Dashboard,
   List: ListPage,
   Board,
@@ -1994,7 +1992,7 @@ export const DESKTOP_SCREENS: Record<string, Screen> = {
   Messages,
 };
 
-export const PHONE_SCREENS: Record<string, Screen> = {
+const PHONE_SCREENS: Record<string, Screen> = {
   Home: PhoneHome,
   List: PhoneList,
   Detail: PhoneDetail,

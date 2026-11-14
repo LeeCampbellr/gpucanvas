@@ -1,6 +1,5 @@
-import type { Rect } from '../src/index';
-import type { Point } from '../src/index';
-import type { Stage } from './stage';
+import type { GpuCanvas, Point, Rect } from '../src/index';
+import { center, intersects, unionOf } from '../src/rect';
 
 /**
  * Agents at work on the canvas. On load the canvas opens on one cluster of blank screens and the
@@ -39,19 +38,6 @@ const INTRO_TIMEOUT_MS = 12_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const ease = (t: number) => 1 - (1 - t) ** 3;
-const overlaps = (a: Rect, b: Rect) =>
-  a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-const centre = (r: Rect): Point => ({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
-const union = (rects: Rect[]): Rect => {
-  const x = Math.min(...rects.map((r) => r.x));
-  const y = Math.min(...rects.map((r) => r.y));
-  return {
-    x,
-    y,
-    width: Math.max(...rects.map((r) => r.x + r.width)) - x,
-    height: Math.max(...rects.map((r) => r.y + r.height)) - y,
-  };
-};
 
 /** The blocks a screen is built from, in reading order: big containers split into their children. */
 function piecesOf(root: HTMLElement) {
@@ -118,7 +104,7 @@ export interface Agents {
 }
 
 /** Starts `count` agents on `canvas`. With `intro`, the screens in it are built first. */
-export function startAgents(canvas: Stage, count: number, intro: Rect | null): Agents {
+export function startAgents(canvas: GpuCanvas, count: number, intro: Rect | null): Agents {
   const layer = html(
     '<div style="position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:1"></div>',
   );
@@ -165,7 +151,7 @@ export function startAgents(canvas: Stage, count: number, intro: Rect | null): A
       (s) => !building.has(s.node) && !s.frame.classList.contains('agent-built'),
     );
     const distance = (s: Screen) =>
-      Math.hypot(centre(s.rect).x - from.x, centre(s.rect).y - from.y);
+      Math.hypot(center(s.rect).x - from.x, center(s.rect).y - from.y);
     return blank.sort((a, b) => distance(a) - distance(b))[0] ?? null;
   };
 
@@ -184,7 +170,7 @@ export function startAgents(canvas: Stage, count: number, intro: Rect | null): A
       ({ node, rect }) =>
         !building.has(node) &&
         rect.width * zoom >= MIN_SCREEN_PX &&
-        !overlaps(rect, focus) &&
+        !intersects(rect, focus) &&
         rect.x > v.x + margin &&
         rect.y > v.y + margin &&
         rect.x + rect.width < v.x + v.width - margin &&
@@ -199,7 +185,7 @@ export function startAgents(canvas: Stage, count: number, intro: Rect | null): A
     const color = COLOR;
     const element = cursor(color);
     layer.append(element);
-    const start = centre(view());
+    const start = center(view());
     return {
       color,
       element,
@@ -321,7 +307,7 @@ export function startAgents(canvas: Stage, count: number, intro: Rect | null): A
     frame.style.setProperty('--agent', agent.color);
     frame.classList.add('agent-building', 'agent-built');
     if (!agent.shown) {
-      agent.from = agent.to = centre(rect);
+      agent.from = agent.to = center(rect);
       agent.shown = true;
     }
     progress();
@@ -329,7 +315,7 @@ export function startAgents(canvas: Stage, count: number, intro: Rect | null): A
       let first = true;
       for (let i = 0; i < pieces.length && !stopped; i += per) {
         const group = pieces.slice(i, i + per);
-        const area = union(group.map((piece) => worldRect(target, piece)));
+        const area = unionOf(group.map((piece) => worldRect(target, piece)))!;
         await glide(agent, area, first ? pace.flight : pace.reach);
         first = false;
         const element = selectionBox(

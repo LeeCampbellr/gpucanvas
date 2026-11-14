@@ -172,7 +172,7 @@ export function useToasts(): [RefObject<HTMLDivElement | null>, ReactNode] {
  * An icon button that opens a panel under it. A press outside or Escape closes it; `children`
  * gets `close` for items that should.
  */
-export function PopoverButton({
+function PopoverButton({
   icon,
   'aria-label': label,
   dot,
@@ -396,7 +396,7 @@ const TONE = {
     'bg-accent-50 text-accent-700 dark:bg-accent-950 dark:text-accent-300',
   ],
 } as const;
-export type ChipColor = keyof typeof TONE;
+type ChipColor = keyof typeof TONE;
 
 export function Chip({
   color = 'neutral',

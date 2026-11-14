@@ -27,7 +27,7 @@ import {
  * Fictional products the playground's screens are made for. Every cluster on the canvas is one
  * product, so the same screen layout shows up with a different brand, copy and data each time.
  */
-export type Tone = 'lime' | 'yellow' | 'rose' | 'blue' | 'purple' | 'cyan' | 'gray';
+type Tone = 'lime' | 'yellow' | 'rose' | 'blue' | 'purple' | 'cyan' | 'gray';
 
 export interface Entry {
   title: string;
@@ -619,3 +619,5 @@ export const PEOPLE = [
   ['Aspen Lubin', avatar('Aspen Lubin')],
   ['Michael Ekstrom', avatar('Michael Ekstrom')],
 ] as const;
+/** Person `index` of PEOPLE, wrapping around: a name and an avatar. */
+export const person = (index: number) => PEOPLE[index % PEOPLE.length];

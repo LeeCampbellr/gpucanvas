@@ -1,9 +1,17 @@
-import { fitCamera, type Camera, type Rect } from '../src/index';
+import {
+  easeInOut,
+  fitCamera,
+  type Camera,
+  type GpuCanvas,
+  type GpuCanvasMode,
+  type Rect,
+} from '../src/index';
+import { center } from '../src/rect';
+import { centeredOn, lerpCamera } from './fly';
 import { createMarquee } from '../src/editor';
-import type { Mode, Stage } from './stage';
 
 export interface BenchResult {
-  mode: Mode;
+  mode: GpuCanvasMode;
   nodes: number;
   frames: number;
   avgFps: number;
@@ -20,7 +28,7 @@ export interface BenchResult {
   effect?: string;
 }
 
-export interface BenchEvent {
+interface BenchEvent {
   t: number;
   kind: 'click' | 'type' | 'move' | 'select';
   x: number;
@@ -29,25 +37,12 @@ export interface BenchEvent {
 }
 
 /** A cluster as the bench needs it: its bounds, its items' rects and its index in the playground. */
-export interface BenchCluster {
+interface BenchCluster {
   id: number;
   bounds: Rect;
   items: { rect: Rect; name?: string }[];
 }
 
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
-const lerpCamera = (a: Camera, b: Camera, t: number): Camera => ({
-  x: lerp(a.x, b.x, t),
-  y: lerp(a.y, b.y, t),
-  zoom: Math.exp(lerp(Math.log(a.zoom), Math.log(b.zoom), t)),
-});
-const centeredOn = (x: number, y: number, zoom: number, w: number, h: number): Camera => ({
-  x: x - w / zoom / 2,
-  y: y - h / zoom / 2,
-  zoom,
-});
-const center = (rect: Rect) => ({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
 const distance = (a: Rect, b: Rect) => {
   const p = center(a);
   const q = center(b);
@@ -142,7 +137,7 @@ const ALTITUDE = 0.06;
  * events reach them in both engines, so the GPU has to redraw what changed.
  */
 function session(
-  canvas: Stage,
+  canvas: GpuCanvas,
   bounds: Rect,
   clusters: BenchCluster[],
   marquee: ReturnType<typeof createMarquee>,
@@ -329,7 +324,7 @@ export const BENCH_DURATION_MS = 30_000;
 
 /** Runs the bench session on `canvas` and measures every frame. */
 export function runBench(
-  canvas: Stage,
+  canvas: GpuCanvas,
   bounds: Rect,
   clusters: BenchCluster[],
   mountMs: number,
@@ -372,8 +367,8 @@ export function runBench(
       }
       const step = steps[index];
       const t = step.ms > 0 ? Math.min(1, (now - stepStart) / step.ms) : 1;
-      if (step.to) canvas.setCamera(lerpCamera(from, step.to, ease(t)));
-      step.each?.(ease(t));
+      if (step.to) canvas.setCamera(lerpCamera(from, step.to, easeInOut(t)));
+      step.each?.(easeInOut(t));
       if (step.type) {
         const text = step.type.text.slice(0, Math.ceil(t * step.type.text.length));
         if (step.type.input.value !== text) {
@@ -402,21 +397,6 @@ export function runBench(
         at: Date.now(),
         log,
       });
-    };
-    requestAnimationFrame(tick);
-  });
-}
-
-/** Animates the camera to `target`. */
-export function flyTo(canvas: Stage, target: Camera, duration = 1400): Promise<void> {
-  const from = canvas.getCamera();
-  return new Promise((resolve) => {
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min(1, Math.max(0, (now - start) / duration));
-      canvas.setCamera(lerpCamera(from, target, ease(t)));
-      if (t < 1) requestAnimationFrame(tick);
-      else resolve();
     };
     requestAnimationFrame(tick);
   });

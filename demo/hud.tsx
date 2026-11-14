@@ -22,18 +22,10 @@ import {
 } from './ui';
 import { BENCH_DURATION_MS, resultKey, type BenchResult } from './bench';
 import { DEMO_EFFECTS, type DemoEffect } from './effects';
-import { MODE_LABEL, MODES, type Mode, type Stage } from './stage';
+import { MODE_LABEL, MODES, parsePick, PICKS, type Pick } from './settings';
+import type { GpuCanvas, GpuCanvasMode } from '../src/index';
 
 export const NODE_COUNTS = [250, 1_000, 2_500, 5_000, 10_000];
-/** What a click selects: a React component, a single element, or a whole screen. */
-export type Pick = 'component' | 'element' | 'node';
-const PICKS: { id: Pick; label: string }[] = [
-  { id: 'component', label: 'Components' },
-  { id: 'element', label: 'Elements' },
-  { id: 'node', label: 'Screens' },
-];
-export const parsePick = (value: string | null): Pick =>
-  PICKS.find((pick) => pick.id === value)?.id ?? 'component';
 const PANEL =
   'rounded-2xl border border-border-button-default bg-background-primary-default shadow-dropdown';
 const format = (value: number) => value.toLocaleString('en-US');
@@ -58,7 +50,7 @@ export function Toolbar({
   onBench,
   onTheme,
 }: {
-  mode: Mode;
+  mode: GpuCanvasMode;
   gpuSupported: boolean;
   nodes: number;
   benchProgress: number | null;
@@ -68,7 +60,7 @@ export function Toolbar({
   edit: boolean;
   pick: Pick;
   agents: boolean;
-  onMode: (mode: Mode) => void;
+  onMode: (mode: GpuCanvasMode) => void;
   onNodes: (nodes: number) => void;
   onEffect: (effect: DemoEffect | null) => void;
   onEdit: (edit: boolean) => void;
@@ -100,7 +92,7 @@ export function Toolbar({
           selectedKeys={[mode]}
           onSelectionChange={(keys) => {
             const key = [...keys][0];
-            if (MODES.includes(key as Mode)) onMode(key as Mode);
+            if (MODES.includes(key as GpuCanvasMode)) onMode(key as GpuCanvasMode);
           }}
         >
           {MODES.map((id) => (
@@ -263,7 +255,7 @@ function GitHubLink({ stars, className }: { stars: number | null; className?: st
 }
 
 /** Short labels keep the toolbar on one row; the frame rate badge names the renderer in full. */
-const RENDERER_LABEL: Record<Mode, string> = { gpu: 'GPU', dom: 'DOM' };
+const RENDERER_LABEL: Record<GpuCanvasMode, string> = { gpu: 'GPU', dom: 'DOM' };
 
 const Separator = () => (
   <span aria-hidden className="mx-1 h-6 w-px bg-border-button-default max-sm:hidden" />
@@ -278,7 +270,7 @@ export function Meter({
   mounted,
   total,
 }: {
-  canvas: Stage | null;
+  canvas: GpuCanvas | null;
   mounted: number;
   total: number;
 }) {
@@ -461,7 +453,15 @@ export function Results({
   );
 }
 
-function ResultRow({ mode, result, best }: { mode: Mode; result?: BenchResult; best: number }) {
+function ResultRow({
+  mode,
+  result,
+  best,
+}: {
+  mode: GpuCanvasMode;
+  result?: BenchResult;
+  best: number;
+}) {
   return (
     <div>
       <div className="flex items-baseline justify-between text-body-2-medium">

@@ -7,7 +7,8 @@ import {
   RiSparkling2Line,
   RiUser3Line,
 } from '@remixicon/react';
-import { art, avatar } from './art';
+import { art } from './art';
+import { person } from './products';
 import { Avatar, cx, Notification } from './ui';
 
 /**
@@ -15,7 +16,7 @@ import { Avatar, cx, Notification } from './ui';
  * components, and what people scatter around screens on a real canvas (stickies, comments, arrows,
  * pictures). Sizes are the natural size of each item.
  */
-export interface ItemKind {
+interface ItemKind {
   width: number;
   height: number;
   render: (variant: number) => ReactNode;
@@ -57,16 +58,6 @@ const RETRO = [
   'Specs changed mid-sprint',
   'More user calls',
 ] as const;
-const PEOPLE = [
-  ['Ann Press', avatar('Ann Press')],
-  ['Livia Saris', avatar('Livia Saris')],
-  ['Jaydon Aminoff', avatar('Jaydon Aminoff')],
-  ['Maria Lubin', avatar('Maria Lubin')],
-  ['Kianna Vaccaro', avatar('Kianna Vaccaro')],
-  ['John Clarkson', avatar('John Clarkson')],
-  ['Aspen Lubin', avatar('Aspen Lubin')],
-  ['Michael Ekstrom', avatar('Michael Ekstrom')],
-] as const;
 const COMMENTS = [
   'Love this direction. Can we try it with the brand blue?',
   'This spacing feels tight on mobile.',
@@ -96,14 +87,14 @@ function Sticky({ variant, text, size }: { variant: number; text: string; size: 
         }}
       >
         <span>{text}</span>
-        <span className="text-[12px] text-neutral-900/55">{pick(PEOPLE, variant * 3)[0]}</span>
+        <span className="text-[12px] text-neutral-900/55">{person(variant * 3)[0]}</span>
       </div>
     </div>
   );
 }
 
 function Comment({ variant }: { variant: number }) {
-  const [name, src] = pick(PEOPLE, variant);
+  const [name, src] = person(variant);
   const [resolved, setResolved] = useState(false);
   return (
     <div className="flex h-full items-start gap-2">
@@ -212,7 +203,7 @@ function Stat() {
 }
 
 function Menu() {
-  const [name, src] = pick(PEOPLE, 2);
+  const [name, src] = person(2);
   const [active, setActive] = useState('Profile');
   return (
     <div className={cx('flex h-full flex-col p-2.5', SURFACE)}>

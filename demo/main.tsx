@@ -20,21 +20,13 @@ import {
   type TransformEvent,
 } from '../src/index';
 import { GpuCanvas, labelComponent, pickComponents } from '../src/react';
-import { flyTo, loadResults, runBench, saveResult, type BenchResult } from './bench';
+import { loadResults, runBench, saveResult, type BenchResult } from './bench';
+import { centeredOn, flyTo } from './fly';
 import { DEMO_EFFECTS, parseEffect } from './effects';
-import {
-  FlagNotice,
-  Hints,
-  Meter,
-  NODE_COUNTS,
-  parsePick,
-  Results,
-  Toolbar,
-  type Pick,
-} from './hud';
+import { FlagNotice, Hints, Meter, NODE_COUNTS, Results, Toolbar } from './hud';
 import { startAgents, type Agents } from './agents';
 import { buildPlayground, ClusterNodes } from './playground';
-import { parseMode, type Stage } from './stage';
+import { parseMode, parsePick, type Pick } from './settings';
 import { FLOW_EVENT, toast } from './ui';
 
 const params = new URLSearchParams(location.search);
@@ -118,6 +110,10 @@ for (const type of ['wheel', 'pointerdown', 'keydown'] as const) {
   );
 }
 
+/** The whole playground in view, with room around it. */
+const overview = (canvas: GpuCanvasInstance) =>
+  fitCamera(BOUNDS, canvas.surface.clientWidth, canvas.surface.clientHeight, 96);
+
 const THEME_KEY = 'gpucanvas.theme';
 const readTheme = () => {
   try {
@@ -136,7 +132,7 @@ declare global {
     agentView?: AgentView;
     marks?: Marks;
     /** The engine on screen, whichever it is. */
-    stage?: Stage;
+    stage?: GpuCanvasInstance;
     runBench?: () => Promise<BenchResult>;
     benchResult?: BenchResult;
     mountMs?: number;
@@ -226,9 +222,8 @@ async function saveSnapshot(canvas: GpuCanvasInstance, node: HTMLElement) {
 }
 
 function App() {
-  const [canvas, setCanvas] = useState<Stage | null>(null);
+  const [canvas, setCanvas] = useState<GpuCanvasInstance | null>(null);
   const [agents, setAgents] = useState<Agents | null>(null);
-  const [gpucanvas, setGpucanvas] = useState<GpuCanvasInstance | null>(null);
   const [dark, setDark] = useState(readTheme);
   const [results, setResults] = useState(loadResults);
   const [benchProgress, setBenchProgress] = useState<number | null>(null);
@@ -236,7 +231,7 @@ function App() {
   const [edit, setEdit] = useState(INITIAL_EDIT);
   const [pick, setPick] = useState(INITIAL_PICK);
   const [agentsOn, setAgentsOn] = useState(INITIAL_AGENTS);
-  const progressive = useProgressiveMount(CLUSTERS.length, gpucanvas !== null);
+  const progressive = useProgressiveMount(CLUSTERS.length, canvas !== null);
   const { mountMs } = progressive;
   const mountedNodes = MOUNTED_NODES[progressive.mounted];
 
@@ -260,15 +255,12 @@ function App() {
       // The theme just won't persist.
     }
     setDark(next);
-    gpucanvas?.setBackground(backgroundColor());
-    gpucanvas?.invalidate();
-  }, [gpucanvas, dark]);
+    canvas?.setBackground(backgroundColor());
+    canvas?.invalidate();
+  }, [canvas, dark]);
 
   const fit = useCallback(() => {
-    if (canvas)
-      canvas.setCamera(
-        fitCamera(BOUNDS, canvas.surface.clientWidth, canvas.surface.clientHeight, 96),
-      );
+    if (canvas) canvas.setCamera(overview(canvas));
   }, [canvas]);
 
   const effectRef = useRef(effect);
@@ -305,13 +297,13 @@ function App() {
   useEffect(() => {
     if (revealed.current || !canvas || mountMs === null || (agentsOn && !agents)) return;
     let cancelled = false;
-    const { clientWidth: w, clientHeight: h } = canvas.surface;
+    const target = overview(canvas);
     // Once the intro's screens are built, the camera pulls out to everything.
     const pullOut = INTRO || MODE !== 'gpu';
     const reveal = (agents?.introDone ?? Promise.resolve()).then(() => {
       if (cancelled) return;
       agents?.release();
-      if (pullOut && !cameraTouched) return flyTo(canvas, fitCamera(BOUNDS, w, h, 96), 2400);
+      if (pullOut && !cameraTouched) return flyTo(canvas, target, 2400);
     });
     reveal.then(() => {
       if (cancelled) return;
@@ -338,42 +330,42 @@ function App() {
 
   // Every component wears the effect once all have mounted.
   useEffect(() => {
-    if (!gpucanvas || mountMs === null) return;
-    const all = gpucanvas.getNodesIn({ x: -1e9, y: -1e9, width: 2e9, height: 2e9 });
+    if (!canvas || mountMs === null) return;
+    const all = canvas.getNodesIn({ x: -1e9, y: -1e9, width: 2e9, height: 2e9 });
     const shader = effect ? DEMO_EFFECTS[effect].effect : null;
-    for (const node of all) gpucanvas.setEffect(node, shader);
-  }, [gpucanvas, mountMs, effect]);
+    for (const node of all) canvas.setEffect(node, shader);
+  }, [canvas, mountMs, effect]);
 
   useEffect(() => {
-    if (!gpucanvas) return;
-    const editor = bindEditor(gpucanvas, {
+    if (!canvas) return;
+    const editor = bindEditor(canvas, {
       ...editorOptions(pick),
       trigger: edit ? 'click' : 'shift-click',
-      onTransform: edit ? (event) => applyTransform(gpucanvas, event) : undefined,
+      onTransform: edit ? (event) => applyTransform(canvas, event) : undefined,
     });
     // S saves the selected screen as a PNG. D dissolves it out and back in, W wipes it.
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || isTyping()) return;
       const first = editor.get()[0]?.[0];
-      const node = first && gpucanvas.getNodeOf(first);
+      const node = first && canvas.getNodeOf(first);
       if (!node) return;
-      if (event.key === 's') saveSnapshot(gpucanvas, node);
-      if (event.key === 'd') playTransition(gpucanvas, node, effects.dissolve);
-      if (event.key === 'w') playTransition(gpucanvas, node, effects.wipe);
+      if (event.key === 's') saveSnapshot(canvas, node);
+      if (event.key === 'd') playTransition(canvas, node, effects.dissolve);
+      if (event.key === 'w') playTransition(canvas, node, effects.wipe);
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
       editor.destroy();
     };
-  }, [gpucanvas, edit, pick]);
+  }, [canvas, edit, pick]);
 
   // Back, Continue and the like move the camera to the neighboring screen in the same row.
   useEffect(() => {
-    if (!gpucanvas) return;
+    if (!canvas) return;
     const onFlow = (event: Event) => {
-      const from = gpucanvas.getNodeOf(event.target as Element);
-      const rect = from && gpucanvas.getNodeRect(from);
+      const from = canvas.getNodeOf(event.target as Element);
+      const rect = from && canvas.getNodeRect(from);
       if (!rect) return;
       const step = (event as CustomEvent<number>).detail;
       const row = rect.y + rect.height / 2;
@@ -384,8 +376,8 @@ function App() {
         height: rect.height * 3,
       };
       let next: typeof rect | null = null;
-      for (const node of gpucanvas.getNodesIn(search)) {
-        const r = gpucanvas.getNodeRect(node);
+      for (const node of canvas.getNodesIn(search)) {
+        const r = canvas.getNodeRect(node);
         if (!r || node === from || !node.querySelector('.brand')) continue;
         if (Math.abs(r.y + r.height / 2 - row) > rect.height / 2) continue;
         if (
@@ -396,21 +388,13 @@ function App() {
       }
       if (!next)
         return void toast(event.target!, step > 0 ? 'Last screen in this flow' : 'First screen');
-      const { zoom } = gpucanvas.getCamera();
-      const { clientWidth: w, clientHeight: h } = gpucanvas.surface;
-      flyTo(
-        gpucanvas,
-        {
-          x: next.x + next.width / 2 - w / 2 / zoom,
-          y: next.y + next.height / 2 - h / 2 / zoom,
-          zoom,
-        },
-        700,
-      );
+      const { zoom } = canvas.getCamera();
+      const { clientWidth: w, clientHeight: h } = canvas.surface;
+      flyTo(canvas, centeredOn(next.x + next.width / 2, next.y + next.height / 2, zoom, w, h), 700);
     };
     document.addEventListener(FLOW_EVENT, onFlow);
     return () => document.removeEventListener(FLOW_EVENT, onFlow);
-  }, [gpucanvas]);
+  }, [canvas]);
 
   useEffect(() => {
     if (!canvas || mountMs === null) return;
@@ -427,7 +411,7 @@ function App() {
   return (
     <>
       <GpuCanvas
-        mode={MODE === 'dom' ? 'dom' : 'gpu'}
+        mode={MODE}
         background={backgroundColor()}
         className="h-screen w-screen"
         onReady={(instance) => {
@@ -445,7 +429,6 @@ function App() {
               ? fitCamera(INTRO, w, h, 0)
               : fitCamera(MODE === 'gpu' ? BOUNDS : CLUSTERS[0].bounds, w, h, 96),
           );
-          setGpucanvas(instance);
           setCanvas(instance);
         }}
       >
