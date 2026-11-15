@@ -143,6 +143,17 @@ export function placeNode(node: GpuNode, at: PageSlot) {
   node.dirty = true;
 }
 
+/** Moves a node to `rect` at the same size: its tiles and preview, in world units, move along. */
+export function translateNode(node: GpuNode, rect: Rect) {
+  const dx = rect.x - node.rect.x;
+  const dy = rect.y - node.rect.y;
+  const shift = (r: Rect): Rect => ({ ...r, x: r.x + dx, y: r.y + dy });
+  for (const tile of node.tiles) tile.rect = shift(tile.rect);
+  if (node.previewRect) node.previewRect = shift(node.previewRect);
+  if (node.previewTarget) node.previewTarget = shift(node.previewTarget);
+  node.rect = rect;
+}
+
 export function setThumb(node: GpuNode, slot: AtlasSlot, now: number) {
   node.thumb = slot;
   node.thumbStale = false;

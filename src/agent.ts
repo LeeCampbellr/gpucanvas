@@ -90,6 +90,9 @@ const round = (rect: Rect): Rect => ({
   height: Math.round(rect.height),
 });
 
+/** The longest side of a captured image, in pixels. */
+const MAX_CAPTURE_PX = 8192;
+
 /**
  * The canvas as an agent sees it: a JSON tree of what is in a region, with ids it can point back
  * at, and images of any region. Wrappers that add nothing (no text, no role, the same box as
@@ -184,10 +187,12 @@ export function createAgentView(canvas: GpuCanvas) {
       target: Rect | string | Element,
       { scale = 1, background }: { scale?: number; background?: string } = {},
     ): Promise<ImageData> {
-      const area = typeof target === 'object' && 'width' in target ? target : this.rect(target);
+      // Elements such as <img> and <canvas> have a width too, so test for an element first.
+      const area =
+        typeof target === 'string' || target instanceof Element ? this.rect(target) : target;
       if (!area) throw new Error('Nothing to capture');
-      // Large regions come back smaller rather than failing: 8192 is WebGPU's default texture limit.
-      const fit = Math.min(scale, 8192 / area.width, 8192 / area.height);
+      // Large regions come back smaller rather than failing.
+      const fit = Math.min(scale, MAX_CAPTURE_PX / area.width, MAX_CAPTURE_PX / area.height);
       const width = Math.max(1, Math.round(area.width * fit));
       const height = Math.max(1, Math.round(area.height * fit));
       const out = new OffscreenCanvas(width, height);
@@ -203,7 +208,14 @@ export function createAgentView(canvas: GpuCanvas) {
         const rect = canvas.getNodeRect(node)!;
         const bitmap = new OffscreenCanvas(images[i].width, images[i].height);
         bitmap.getContext('2d')!.putImageData(images[i], 0, 0);
-        context.drawImage(bitmap, (rect.x - area.x) * fit, (rect.y - area.y) * fit);
+        // A node too large for the GPU comes back at a smaller scale; it still fills its rect.
+        context.drawImage(
+          bitmap,
+          (rect.x - area.x) * fit,
+          (rect.y - area.y) * fit,
+          rect.width * fit,
+          rect.height * fit,
+        );
       });
       return context.getImageData(0, 0, width, height);
     },

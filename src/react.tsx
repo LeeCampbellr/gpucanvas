@@ -41,12 +41,18 @@ export function GpuCanvas({ children, className, style, onReady, ...options }: G
   useEffect(() => {
     let disposed = false;
     let created: GpuCanvasInstance | null = null;
-    createGpuCanvas(hostRef.current!, latest.current.options).then((instance) => {
-      if (disposed) return instance.destroy();
-      created = instance;
-      setCanvas(instance);
-      latest.current.onReady?.(instance);
-    });
+    createGpuCanvas(hostRef.current!, {
+      ...latest.current.options,
+      // The callback from the latest render, not the first.
+      onCameraChange: (camera) => latest.current.options.onCameraChange?.(camera),
+    })
+      .then((instance) => {
+        if (disposed) return instance.destroy();
+        created = instance;
+        setCanvas(instance);
+        latest.current.onReady?.(instance);
+      })
+      .catch((error) => console.error('gpucanvas: the canvas failed to start', error));
     return () => {
       disposed = true;
       created?.destroy();
@@ -54,6 +60,11 @@ export function GpuCanvas({ children, className, style, onReady, ...options }: G
     };
     // The mode and GPU resources are fixed for the canvas's lifetime; remount to change them.
   }, []);
+
+  const { background } = options;
+  useEffect(() => {
+    if (canvas && background !== undefined) canvas.setBackground(background);
+  }, [canvas, background]);
 
   return (
     <div ref={hostRef} className={className} style={{ position: 'relative', ...style }}>

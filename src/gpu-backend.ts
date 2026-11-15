@@ -9,6 +9,7 @@ import {
   isCurrentTile,
   nodeOf,
   placeNode,
+  translateNode,
   type GpuNode,
   type Tile,
 } from './gpu-node';
@@ -120,16 +121,18 @@ export async function createGpuCanvas(
         return node;
       },
       update(node, rect) {
-        const resized = node.rect.width !== rect.width || node.rect.height !== rect.height;
-        node.rect = rect;
         ringRects.clear();
-        if (resized) {
-          relocate(node, () => {
-            pages.release(node);
-            placeNode(node, pages.place(node.element, rect));
-            pages.join(node);
-          });
+        if (node.rect.width === rect.width && node.rect.height === rect.height) {
+          translateNode(node, rect);
+          return schedule();
         }
+        // A new size needs a new spot on a page, and new pixels.
+        node.rect = rect;
+        relocate(node, () => {
+          pages.release(node);
+          placeNode(node, pages.place(node.element, rect));
+          pages.join(node);
+        });
         schedule();
       },
       remove(node) {
