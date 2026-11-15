@@ -71,7 +71,10 @@ export interface GpuCanvas {
   removeNode(element: HTMLElement): void;
   /** Where `element` sits on the canvas, in world units, or null when it is not a node. */
   getNodeRect(element: HTMLElement): Rect | null;
-  /** Nodes that overlap `rect` (world units), such as the ones under a selection box. */
+  /**
+   * Nodes that overlap `rect` (world units), such as the ones under a selection box, in the order
+   * they were added: later ones draw on top.
+   */
   getNodesIn(rect: Rect): HTMLElement[];
   /** The node that holds `element`: the element itself when it is a node, or null. */
   getNodeOf(element: Element): HTMLElement | null;
@@ -118,6 +121,11 @@ export interface GpuCanvas {
 
 export const DEFAULT_CAMERA: Camera = { x: 0, y: 0, zoom: 1 };
 export const DEFAULT_SELECTION_COLOR = '#4f8cff';
+/**
+ * How what is drawn above the nodes stacks on the surface. Equal values stack in the order they
+ * were added.
+ */
+export const SURFACE_Z = { marks: '1', marquee: '1', overlay: '2' } as const;
 /** Width of the selection outline, in CSS pixels at any zoom. */
 export const SELECTION_WIDTH = 2;
 /** Width of the hover outline, in CSS pixels at any zoom. */

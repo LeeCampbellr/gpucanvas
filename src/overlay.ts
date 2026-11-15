@@ -1,10 +1,26 @@
 import { worldToScreen, type Camera } from './camera';
 import type { Rect } from './rect';
 import type { Guide } from './snap';
+import { SURFACE_Z } from './types';
 
 /** Resize handles, by the edges they move. */
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const;
 export type Handle = (typeof HANDLES)[number];
+
+/**
+ * Where each handle sits on the box, as fractions of its width and height. An edge at 0 or 1 is
+ * one the handle moves; 0.5 is an axis it leaves alone.
+ */
+export const HANDLE_ANCHORS: Record<Handle, { x: number; y: number }> = {
+  nw: { x: 0, y: 0 },
+  n: { x: 0.5, y: 0 },
+  ne: { x: 1, y: 0 },
+  e: { x: 1, y: 0.5 },
+  se: { x: 1, y: 1 },
+  s: { x: 0.5, y: 1 },
+  sw: { x: 0, y: 1 },
+  w: { x: 0, y: 0.5 },
+};
 
 const HANDLE_PX = 8;
 const CURSORS: Record<Handle, string> = {
@@ -51,7 +67,7 @@ export function createOverlay(surface: HTMLElement, color: string) {
     inset: '0',
     overflow: 'hidden',
     pointerEvents: 'none',
-    zIndex: '2',
+    zIndex: SURFACE_Z.overlay,
   });
   const make = (style: Record<string, string>) => {
     const element = document.createElement('div');
@@ -120,12 +136,11 @@ export function createOverlay(surface: HTMLElement, color: string) {
         }
         if (state.handles) {
           HANDLES.forEach((handle, i) => {
-            const fx = handle.includes('w') ? 0 : handle.includes('e') ? 1 : 0.5;
-            const fy = handle.includes('n') ? 0 : handle.includes('s') ? 1 : 0.5;
+            const anchor = HANDLE_ANCHORS[handle];
             place(
               handles[i],
-              rect.x + rect.width * fx - HANDLE_PX / 2,
-              rect.y + rect.height * fy - HANDLE_PX / 2,
+              rect.x + rect.width * anchor.x - HANDLE_PX / 2,
+              rect.y + rect.height * anchor.y - HANDLE_PX / 2,
             );
           });
         }

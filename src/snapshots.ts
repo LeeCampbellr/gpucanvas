@@ -107,6 +107,7 @@ export function recordFilmstrip(
   const frames: FilmstripFrame[] = [];
   let stopped = false;
   let timer = 0;
+  let warned = false;
   const take = () => {
     canvas
       .snapshot(node, { scale })
@@ -117,7 +118,12 @@ export function recordFilmstrip(
         if (frames.length > max) frames.shift();
         onFrame?.(frame, frames);
       })
-      .catch(() => {});
+      .catch((error) => {
+        // Once per filmstrip: on the DOM backend every snapshot fails the same way.
+        if (warned) return;
+        warned = true;
+        console.warn('gpucanvas: filmstrip snapshot failed', error);
+      });
   };
   const observer = new MutationObserver((records) => {
     // The canvas writes style on the node itself to place it; only its content counts.

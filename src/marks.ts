@@ -1,6 +1,6 @@
 import { rectToScreen } from './camera';
 import type { Point, Rect } from './rect';
-import { DEFAULT_SELECTION_COLOR, type GpuCanvas } from './types';
+import { DEFAULT_SELECTION_COLOR, SURFACE_Z, type GpuCanvas } from './types';
 
 /** Something drawn above the nodes. `remove` takes it off the canvas. */
 export interface Mark {
@@ -44,7 +44,7 @@ export function createMarks(canvas: GpuCanvas, { color = DEFAULT_SELECTION_COLOR
     inset: '0',
     overflow: 'hidden',
     pointerEvents: 'none',
-    zIndex: '1',
+    zIndex: SURFACE_Z.marks,
   });
   const svg = document.createElementNS(SVG, 'svg');
   Object.assign(svg.style, { position: 'absolute', inset: '0', width: '100%', height: '100%' });
@@ -104,22 +104,26 @@ export function createMarks(canvas: GpuCanvas, { color = DEFAULT_SELECTION_COLOR
     return element;
   };
 
-  /** Every mark redraws itself each frame while any exist, so it follows camera and layout. */
-  const marks = new Set<() => void>();
+  /**
+   * Every mark redraws itself each frame while any exist, so it follows camera and layout. Each
+   * draw maps to the mark's remover.
+   */
+  const marks = new Map<() => void, () => void>();
   let frame = 0;
   const loop = () => {
     frame = marks.size ? requestAnimationFrame(loop) : 0;
-    for (const draw of marks) draw();
+    for (const draw of marks.keys()) draw();
   };
   const add = (draw: () => void, remove: () => void): Mark => {
-    marks.add(draw);
-    if (!frame) frame = requestAnimationFrame(loop);
-    return {
+    const mark = {
       remove() {
         marks.delete(draw);
         remove();
       },
     };
+    marks.set(draw, mark.remove);
+    if (!frame) frame = requestAnimationFrame(loop);
+    return mark;
   };
 
   return {
@@ -294,9 +298,7 @@ export function createMarks(canvas: GpuCanvas, { color = DEFAULT_SELECTION_COLOR
 
     /** Removes every mark. */
     clear() {
-      for (const draw of [...marks]) marks.delete(draw);
-      root.querySelectorAll(':scope > div').forEach((element) => element.remove());
-      svg.querySelectorAll(':scope > path').forEach((element) => element.remove());
+      for (const remove of [...marks.values()]) remove();
     },
 
     destroy() {

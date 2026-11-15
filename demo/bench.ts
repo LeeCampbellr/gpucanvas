@@ -301,10 +301,13 @@ function session(
       ms: 1500,
       move: 'select',
       each: (t) => {
-        count = marquee.update(from, {
+        const world = marquee.update(from, {
           x: from.x + (to.x - from.x) * t,
           y: from.y + (to.y - from.y) * t,
-        }).length;
+        });
+        const hits = canvas.getNodesIn(world);
+        canvas.setSelection(hits);
+        count = hits.length;
       },
     },
     {

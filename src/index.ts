@@ -37,6 +37,8 @@ export async function createGpuCanvas(
     return await createGpuBackend(host, options);
   } catch (error) {
     if (mode === 'gpu') throw error;
+    // The browser has both APIs, so a failure here is worth knowing about.
+    console.warn('gpucanvas: the GPU backend failed to start, using DOM', error);
     return createDomCanvas(host, options);
   }
 }

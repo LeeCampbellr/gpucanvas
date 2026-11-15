@@ -1,10 +1,10 @@
 import { rectToScreen, screenToWorld, viewOf } from './camera';
 import { pointIn } from './input';
 import { createLayers, layerIn, layerRect, sameLayer, type EditorPick, type Layer } from './layers';
-import { createOverlay, guideRect, handleAt, type Handle } from './overlay';
+import { createOverlay, guideRect, HANDLE_ANCHORS, handleAt, type Handle } from './overlay';
 import { unionOf, type Point, type Rect } from './rect';
 import { snapRect, type Guide } from './snap';
-import { DEFAULT_SELECTION_COLOR, type GpuCanvas } from './types';
+import { DEFAULT_SELECTION_COLOR, SURFACE_Z, type GpuCanvas } from './types';
 
 export interface TransformEvent {
   phase: 'start' | 'move' | 'end' | 'cancel';
@@ -61,17 +61,10 @@ export interface Editor {
   destroy(): void;
 }
 
-type MarqueeCanvas = Pick<GpuCanvas, 'surface' | 'getCamera' | 'getNodesIn' | 'setSelection'>;
+type MarqueeCanvas = Pick<GpuCanvas, 'surface' | 'getCamera'>;
 
-/**
- * A selection box over the canvas, in surface pixels. What it overlaps is selected as it grows,
- * by default every node, so the outlines sweep across the canvas with it.
- */
-export function createMarquee(
-  canvas: MarqueeCanvas,
-  color = DEFAULT_SELECTION_COLOR,
-  select: (world: Rect) => Element[] = (world) => canvas.getNodesIn(world),
-) {
+/** A selection box over the canvas, drawn in surface pixels; the caller selects what it covers. */
+export function createMarquee(canvas: MarqueeCanvas, color = DEFAULT_SELECTION_COLOR) {
   const box = document.createElement('div');
   Object.assign(box.style, {
     position: 'absolute',
@@ -79,12 +72,12 @@ export function createMarquee(
     pointerEvents: 'none',
     border: `1px solid ${color}`,
     background: `color-mix(in srgb, ${color} 12%, transparent)`,
-    zIndex: '1',
+    zIndex: SURFACE_Z.marquee,
   });
   canvas.surface.append(box);
   return {
-    /** Spans the box from `a` to `b` (surface pixels) and selects what it covers. */
-    update(a: Point, b: Point): Element[] {
+    /** Spans the box from `a` to `b` (surface pixels) and returns the world rect it covers. */
+    update(a: Point, b: Point): Rect {
       const x = Math.min(a.x, b.x);
       const y = Math.min(a.y, b.y);
       const width = Math.abs(b.x - a.x);
@@ -97,13 +90,11 @@ export function createMarquee(
         height: `${height}px`,
       });
       const camera = canvas.getCamera();
-      const hits = select({
+      return {
         ...screenToWorld(camera, { x, y }),
         width: width / camera.zoom,
         height: height / camera.zoom,
-      });
-      canvas.setSelection(hits);
-      return hits;
+      };
     },
     hide() {
       box.style.display = 'none';
@@ -137,18 +128,21 @@ const isEditable = (element: Element | null) =>
 type Gesture =
   /** `inside`: the press is on the open area of the scope itself, where a drag draws a box. */
   | { kind: 'press'; start: Point; additive: boolean; target: Target; inside: boolean }
-  | { kind: 'marquee'; start: Point }
-  | {
-      kind: 'move' | 'resize';
-      start: Point;
-      handle: Handle | null;
-      layers: Layer[];
-      from: Rect[];
-      bounds: Rect;
-      to: Rect[];
-      targets: Rect[];
-      guides: Guide[];
-    };
+  /** `scopes`: where the box selects, fixed when it starts. */
+  | { kind: 'marquee'; start: Point; scopes: Layer[] }
+  | Transform;
+
+type Transform = {
+  kind: 'move' | 'resize';
+  start: Point;
+  handle: Handle | null;
+  layers: Layer[];
+  from: Rect[];
+  bounds: Rect;
+  to: Rect[];
+  targets: Rect[];
+  guides: Guide[];
+};
 
 /** A layer a click lands on, and the layers it sits inside, outermost first. */
 interface Target {
@@ -178,13 +172,7 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
   const layers = createLayers(canvas, pick);
   const transforms = !!onTransform && trigger === 'click';
   const overlay = createOverlay(surface, color);
-  let marqueeLayers: Layer[] = [];
-  const box = marquee
-    ? createMarquee(canvas, color, (world) => {
-        marqueeLayers = layers.layersIn(scopes.at(-1) ?? null, world);
-        return marqueeLayers.flat();
-      })
-    : null;
+  const box = marquee ? createMarquee(canvas, color) : null;
 
   let selection: Layer[] = [];
   /** The layers the selection sits inside, outermost first. Clicks stay at its depth. */
@@ -280,14 +268,13 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
 
   // ----- moving and resizing ----------------------------------------------------------------
 
-  const emit = (phase: TransformEvent['phase']) => {
-    if (gesture?.kind !== 'move' && gesture?.kind !== 'resize') return;
+  const emit = (transform: Transform, phase: TransformEvent['phase']) => {
     onTransform?.({
       phase,
-      kind: gesture.kind,
-      layers: gesture.layers,
-      from: gesture.from,
-      to: phase === 'cancel' ? gesture.from : gesture.to,
+      kind: transform.kind,
+      layers: transform.layers,
+      from: transform.from,
+      to: phase === 'cancel' ? transform.from : transform.to,
     });
   };
   /** Neighbors to snap to: the other layers in the same scope, and the scope itself. */
@@ -310,7 +297,7 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
     const from = selection.map((layer) => layerRect(canvas, layer));
     if (from.some((rect) => !rect)) return;
     const rects = from as Rect[];
-    gesture = {
+    const transform: Transform = {
       kind: handle ? 'resize' : 'move',
       start,
       handle,
@@ -321,8 +308,9 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
       targets: snapTargets(selection),
       guides: [],
     };
+    gesture = transform;
     setHovered(null);
-    emit('start');
+    emit(transform, 'start');
   };
   const updateTransform = (point: Point, keepRatio: boolean) => {
     if (gesture?.kind !== 'move' && gesture?.kind !== 'resize') return;
@@ -344,28 +332,29 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
       let top = bounds.y;
       let right = bounds.x + bounds.width;
       let bottom = bounds.y + bounds.height;
-      if (handle.includes('w')) left = Math.min(left + dx, right - 1);
-      if (handle.includes('e')) right = Math.max(right + dx, left + 1);
-      if (handle.includes('n')) top = Math.min(top + dy, bottom - 1);
-      if (handle.includes('s')) bottom = Math.max(bottom + dy, top + 1);
+      const anchor = HANDLE_ANCHORS[handle];
+      if (anchor.x === 0) left = Math.min(left + dx, right - 1);
+      if (anchor.x === 1) right = Math.max(right + dx, left + 1);
+      if (anchor.y === 0) top = Math.min(top + dy, bottom - 1);
+      if (anchor.y === 1) bottom = Math.max(bottom + dy, top + 1);
       next = { x: left, y: top, width: right - left, height: bottom - top };
-      const corner = handle.length === 2;
+      const corner = anchor.x !== 0.5 && anchor.y !== 0.5;
       if (keepRatio && corner) {
         // Shift on a corner keeps the proportions, anchored at the opposite corner.
         const scale = Math.max(next.width / bounds.width, next.height / bounds.height);
         const width = bounds.width * scale;
         const height = bounds.height * scale;
         next = {
-          x: handle.includes('w') ? right - width : left,
-          y: handle.includes('n') ? bottom - height : top,
+          x: anchor.x === 0 ? right - width : left,
+          y: anchor.y === 0 ? bottom - height : top,
           width,
           height,
         };
         gesture.guides = [];
       } else {
         const edges = {
-          x: handle.includes('w') ? [0] : handle.includes('e') ? [1] : [],
-          y: handle.includes('n') ? [0] : handle.includes('s') ? [1] : [],
+          x: anchor.x === 0.5 ? [] : [anchor.x],
+          y: anchor.y === 0.5 ? [] : [anchor.y],
         };
         const snapped = snapRect(next, gesture.targets, threshold, edges);
         if (edges.x[0] === 0)
@@ -386,7 +375,7 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
       width: rect.width * sx,
       height: rect.height * sy,
     }));
-    emit('move');
+    emit(gesture, 'move');
     draw();
   };
 
@@ -421,7 +410,7 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
     if (!target) {
       if (event.shiftKey && box) {
         take();
-        gesture = { kind: 'marquee', start: point };
+        gesture = { kind: 'marquee', start: point, scopes };
         return;
       }
       // A plain press on the background clears, and still pans the camera.
@@ -451,35 +440,27 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
         return;
       // Dragging moves in the edit mode, and draws a selection box otherwise.
       if (gesture.inside || (trigger !== 'click' && box)) {
-        gesture = { kind: 'marquee', start: gesture.start };
+        gesture = { kind: 'marquee', start: gesture.start, scopes };
       } else if (trigger === 'click' && transforms) beginTransform(gesture.start, null);
       else return;
     }
     if (gesture?.kind === 'marquee') {
-      box!.update(gesture.start, pointer);
-      selection = marqueeLayers;
-      onChange?.(selection);
-      draw();
+      const world = box!.update(gesture.start, pointer);
+      commit(layers.layersIn(gesture.scopes.at(-1) ?? null, world), gesture.scopes);
     } else updateTransform(pointer, event.shiftKey);
   };
   const onPointerUp = () => {
     const done = gesture;
     gesture = null;
     if (!done) return;
-    if (done.kind === 'marquee') {
-      box!.hide();
-      commit(marqueeLayers);
-    } else if (done.kind === 'press') {
+    if (done.kind === 'marquee') box!.hide();
+    else if (done.kind === 'press') {
       const { layer, scopes: inside } = done.target;
       if (!done.additive) commit([layer], inside);
       else if (layerIn(layer, selection))
         commit(selection.filter((other) => !sameLayer(other, layer)));
       else commit([...selection, layer], inside);
-    } else {
-      gesture = done;
-      emit('end');
-      gesture = null;
-    }
+    } else emit(done, 'end');
     updateHover();
     draw();
   };
@@ -549,7 +530,7 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
     }
     if (event.key === 'Escape') {
       if (gesture?.kind === 'move' || gesture?.kind === 'resize') {
-        emit('cancel');
+        emit(gesture, 'cancel');
         gesture = null;
       } else if (scopes.length) up();
       else if (selection.length) commit([], []);
