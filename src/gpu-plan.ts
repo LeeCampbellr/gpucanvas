@@ -1,10 +1,12 @@
 import type { Atlas } from './atlas';
 import {
   hasFreshThumb,
+  isCurrentTile,
   smallOnScreen,
   SMALL_REFRESH_MS,
   THUMBNAIL_SCALE,
   type GpuNode,
+  type Tile,
 } from './gpu-node';
 import type { Page } from './page';
 import { center, contains, intersection, intersects, type Rect } from './rect';
@@ -58,7 +60,7 @@ const OVERSAMPLED = 3;
  * Snapshots are rasterized at power-of-two scales so zooming reuses them; a snapshot up to 10%
  * too small is accepted before paying for the next scale.
  */
-export function rasterScaleFor(deviceScale: number) {
+function rasterScaleFor(deviceScale: number) {
   const scale = 2 ** Math.ceil(Math.log2(deviceScale) - 0.14);
   return Math.min(MAX_DETAIL_SCALE, Math.max(MIN_RASTER_SCALE, scale));
 }
@@ -81,31 +83,33 @@ export class Planner {
   view: Rect = { x: 0, y: 0, width: 0, height: 0 };
   readonly visible: GpuNode[] = [];
   readonly plans = new Map<Page, PagePlan>();
+  /** This frame's plans, most urgent first. */
+  ordered: PagePlan[] = [];
   /** Last plan's nodes per need class: missing, dirty, blurry, oversampled. */
   needs = [0, 0, 0, 0];
+  private zoom = 1;
   private contentTimer = 0;
   private refreshTimer = 0;
   private refreshAt = Infinity;
 
   constructor(
     private readonly atlas: Atlas,
-    private readonly atlasSize: number,
-    private readonly zoom: () => number,
     /** Moves a node onto a page of its own. */
     private readonly lift: (node: GpuNode) => void,
     private readonly schedule: () => void,
   ) {}
 
-  /** Builds this frame's raster plan: which visible nodes need pixels, grouped by page. */
-  plan(
-    nodes: Iterable<GpuNode>,
-    view: Rect,
-    desiredScale: number,
-    deviceScale: number,
-    moving: boolean,
-  ) {
-    const { atlas, atlasSize, visible, plans } = this;
+  /**
+   * Builds this frame's raster plan: which visible nodes need pixels, grouped by page. `dpr` is
+   * canvas pixels per CSS pixel; `moving` means the camera has not rested yet.
+   */
+  plan(nodes: Iterable<GpuNode>, view: Rect, zoom: number, dpr: number, moving: boolean) {
+    const { atlas, visible, plans } = this;
+    const atlasSize = atlas.size;
+    const deviceScale = zoom * dpr;
+    const desiredScale = rasterScaleFor(deviceScale);
     const now = performance.now();
+    this.zoom = zoom;
     // Tiles are redrawn whenever the zoom settles anyway, so they use the exact device scale:
     // one tile texel per screen pixel.
     this.detailScale = Math.min(deviceScale, MAX_DETAIL_SCALE);
@@ -169,6 +173,23 @@ export class Planner {
       plan.tiles.push(...jobs);
     }
     for (const plan of plans.values()) plan.tiles.sort((a, b) => a.priority - b.priority);
+    this.ordered = [...plans.values()].sort((a, b) => a.priority - b.priority);
+  }
+
+  /** Atlas slots to keep when it is full: what is on screen, whole snapshots before sharp tiles. */
+  *keep() {
+    const { visible, detailScale, view } = this;
+    const onScreen = (tile: Tile) => intersects(tile.rect, view);
+    for (const node of visible) yield node.slot;
+    for (const node of visible) {
+      for (const tile of node.tiles) {
+        if (isCurrentTile(tile, detailScale) && onScreen(tile)) yield tile.slot;
+      }
+    }
+    for (const node of visible) {
+      yield node.preview;
+      for (const tile of node.tiles) if (onScreen(tile)) yield tile.slot;
+    }
   }
 
   destroy() {
@@ -203,7 +224,7 @@ export class Planner {
       return [];
     }
     // Panning at a steady zoom keeps filling tiles; while the zoom changes it waits to settle.
-    const current = node.tiles.filter((tile) => tile.scale === detailScale && !tile.stale);
+    const current = node.tiles.filter((tile) => isCurrentTile(tile, detailScale));
     if (moving && current.length === 0) return [];
     const size = Math.max(1, Math.floor(TILE_PIXELS / detailScale));
     const jobs: TileJob[] = [];
@@ -245,7 +266,7 @@ export class Planner {
 
   /** The world rect a preview covers: `shown`, shrunk around its center to fit one layer. */
   private fitPreview(shown: Rect, scale: number): Rect {
-    const limit = (this.atlasSize - 2) / scale;
+    const limit = (this.atlas.size - 2) / scale;
     const fit = (start: number, size: number) =>
       size <= limit ? [start, size] : [start + (size - limit) / 2, limit];
     const [x, width] = fit(shown.x, shown.width);
@@ -261,7 +282,7 @@ export class Planner {
 
   /** How long a changed node waits before it is redrawn: only small ones wait. */
   private refreshWait(node: GpuNode, now: number) {
-    return smallOnScreen(node, this.zoom()) ? node.refreshedAt + SMALL_REFRESH_MS - now : 0;
+    return smallOnScreen(node, this.zoom) ? node.refreshedAt + SMALL_REFRESH_MS - now : 0;
   }
 
   private refreshLater(wait: number) {

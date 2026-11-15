@@ -12,7 +12,7 @@ import { Shelves } from './shelves';
 /** Space between nodes on a page, so filtering at a node's edge never reads its neighbor. */
 const GAP = 4;
 
-interface PageSlot {
+export interface PageSlot {
   page: Page;
   x: number;
   y: number;

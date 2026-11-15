@@ -137,20 +137,21 @@ export class CompositeRenderer {
     return this.failed.has(effect);
   }
 
-  /** Starts a frame with room for at least `capacity` quads. */
-  begin(capacity: number) {
-    const floats = capacity * FLOATS_PER_INSTANCE;
-    if (this.instances.length < floats) {
-      this.instances = new Float32Array(Math.max(floats, this.instances.length * 2));
-      this.instanceBuffer.destroy();
-      this.instanceBuffer = this.createInstanceBuffer();
-    }
+  /** Starts a frame's list of quads. */
+  begin() {
     this.count = 0;
     this.runs.length = 0;
   }
 
   /** Room for the next quad, in the run of `effect`; returns its first float. */
   private next(effect: Effect | null) {
+    if ((this.count + 1) * FLOATS_PER_INSTANCE > this.instances.length) {
+      const larger = new Float32Array(this.instances.length * 2);
+      larger.set(this.instances);
+      this.instances = larger;
+      this.instanceBuffer.destroy();
+      this.instanceBuffer = this.createInstanceBuffer();
+    }
     const last = this.runs.at(-1);
     if (last && last.effect === effect) last.count++;
     else this.runs.push({ effect, start: this.count, count: 1 });

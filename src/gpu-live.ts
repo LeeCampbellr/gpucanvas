@@ -34,8 +34,8 @@ export interface LiveOptions {
   /** Canvas pixels per CSS pixel. */
   canvasDpr: () => number;
   schedule: () => void;
-  /** Whether something (a capture, a held node) keeps a page drawable. */
-  isPinned: (page: Page) => boolean;
+  /** Whether a snapshot waiting to be captured keeps a page drawable. */
+  captured: (page: Page) => boolean;
   /** Runs on every press. */
   onPress: () => void;
 }
@@ -83,6 +83,11 @@ export class Live {
     canvas.addEventListener('focusout', this.onFocusOut);
     for (const type of USE_EVENTS) canvas.addEventListener(type, this.onUse, true);
     canvas.addEventListener('transitionrun', this.onTransitionRun);
+  }
+
+  /** Whether a held node keeps `page` drawable. */
+  holds(page: Page) {
+    return this.held().some((node) => node?.page === page);
   }
 
   /** Nodes kept drawable and redrawn on every paint: under the pointer, focused, transitioning. */
@@ -164,7 +169,7 @@ export class Live {
 
   /** Releases a page from hit testing once nothing pins it; it parks after its next raster. */
   unpin(page: Page) {
-    if (this.o.isPinned(page)) return;
+    if (this.o.captured(page) || this.holds(page)) return;
     if (page.registered) this.o.canvas.clearElementGeometry(page.element);
     page.registered = false;
     page.element.style.transform = '';

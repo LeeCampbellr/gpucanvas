@@ -38,17 +38,9 @@ export class Pages {
     return this.byElement.get(element);
   }
 
-  /** Places a node on the open page, or on a new one, and marks it for a fresh snapshot. */
-  attach(node: GpuNode) {
-    const slot = this.place(node.element, node.rect);
-    node.page = slot.page;
-    node.pageX = slot.x;
-    node.pageY = slot.y;
-    node.slot = null;
-    node.thumb = null;
-    node.solo = false;
-    node.dirty = true;
-    this.members.get(slot.page)!.add(node);
+  /** Counts a node, already placed on its page, as one of the page's nodes. */
+  join(node: GpuNode) {
+    this.members.get(node.page)!.add(node);
   }
 
   release(node: GpuNode) {
@@ -80,11 +72,12 @@ export class Pages {
     node.pageX = 0;
     node.pageY = 0;
     node.solo = true;
-    this.members.get(page)!.add(node);
+    this.join(node);
     return previous;
   }
 
-  private place(element: HTMLElement, rect: Rect) {
+  /** Lays out `element` on the open page, or a new one when it is full or too small. */
+  place(element: HTMLElement, rect: Rect) {
     const { pageSize } = this;
     let slot = this.open?.place(rect.width, rect.height) ?? null;
     if (!slot) {
@@ -105,6 +98,17 @@ export class Pages {
     });
     slot.page.element.append(element);
     return slot;
+  }
+
+  /**
+   * Parks drawable pages that nothing in this frame's plan needs: a page promoted for a camera
+   * that has moved on would otherwise be painted by Chrome every frame.
+   */
+  parkIdle(plans: Map<Page, unknown>, frameNumber: number, isPinned: (page: Page) => boolean) {
+    for (const page of this.members.keys()) {
+      if (page.drawable && !plans.has(page) && page.promotedFrame < frameNumber && !isPinned(page))
+        page.setDrawable(false, frameNumber);
+    }
   }
 
   private newPage(width: number, height: number) {

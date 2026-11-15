@@ -1,6 +1,6 @@
 import type { Atlas, AtlasSlot } from './atlas';
 import { nodeOfElement } from './elements';
-import type { Page } from './page';
+import type { Page, PageSlot } from './page';
 import type { Rect } from './rect';
 
 /** A node on the GPU backend: where it sits, and what of it the atlas holds. */
@@ -102,6 +102,83 @@ export const nodeRegion = (node: GpuNode): Rect => ({
   width: node.rect.width,
   height: node.rect.height,
 });
+
+/** A new node at `at` on its page, with nothing of it drawn yet. */
+export const createGpuNode = (element: HTMLElement, rect: Rect, at: PageSlot): GpuNode => ({
+  element,
+  rect,
+  page: at.page,
+  pageX: at.x,
+  pageY: at.y,
+  slot: null,
+  slotScale: 0,
+  thumb: null,
+  thumbStale: false,
+  thumbAt: -Infinity,
+  shown: 0,
+  shownFrame: -1,
+  dirty: true,
+  tiles: [],
+  preview: null,
+  previewRect: null,
+  previewScale: 0,
+  previewTarget: null,
+  previewTargetScale: 0,
+  changedAt: -Infinity,
+  refreshedAt: -Infinity,
+  wholeStale: false,
+  solo: false,
+  targetScale: 0,
+  priority: 0,
+});
+
+/** Puts a node at a new spot on a page, where nothing of it is drawn yet. */
+export function placeNode(node: GpuNode, at: PageSlot) {
+  node.page = at.page;
+  node.pageX = at.x;
+  node.pageY = at.y;
+  node.slot = null;
+  node.thumb = null;
+  node.solo = false;
+  node.dirty = true;
+}
+
+export function setThumb(node: GpuNode, slot: AtlasSlot, now: number) {
+  node.thumb = slot;
+  node.thumbStale = false;
+  node.thumbAt = now;
+}
+
+/** Records a whole snapshot that reached the atlas; at thumbnail scale it is the thumbnail too. */
+export function recordWhole(node: GpuNode, slot: AtlasSlot, scale: number, now: number) {
+  node.slot = slot;
+  node.slotScale = scale;
+  if (scale === THUMBNAIL_SCALE) setThumb(node, slot, now);
+  else if (node.dirty) node.thumbStale = true;
+  if (node.dirty) {
+    // A preview from before the change would cover the fresh snapshot.
+    node.preview = null;
+    node.refreshedAt = now;
+  }
+  node.dirty = false;
+  node.wholeStale = false;
+}
+
+/**
+ * Records a preview or tile that reached the atlas. After a change, the node's whole snapshot and
+ * thumbnail lag behind what the preview and tiles show.
+ */
+export function recordPartial(node: GpuNode, now: number) {
+  if (!node.dirty) return;
+  node.dirty = false;
+  node.wholeStale = true;
+  node.thumbStale = true;
+  node.refreshedAt = now;
+}
+
+/** A tile drawn at this frame's tile scale from the node's current content. */
+export const isCurrentTile = (tile: Tile, detailScale: number) =>
+  tile.scale === detailScale && !tile.stale;
 
 export const hasFreshThumb = (atlas: Atlas, node: GpuNode) =>
   atlas.isValid(node.thumb) && !node.thumbStale;

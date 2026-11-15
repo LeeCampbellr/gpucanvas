@@ -4,9 +4,16 @@ import { screenToWorld } from './camera';
 import { nodeOfElement, rectInNode } from './elements';
 import { effectPad, effectParams, type Effect } from './effects';
 import { Live, FAR_AWAY } from './gpu-live';
-import { nodeOf, type GpuNode, type Tile } from './gpu-node';
+import {
+  createGpuNode,
+  isCurrentTile,
+  nodeOf,
+  placeNode,
+  type GpuNode,
+  type Tile,
+} from './gpu-node';
 import { Pages } from './gpu-pages';
-import { Planner, rasterScaleFor } from './gpu-plan';
+import { Planner } from './gpu-plan';
 import { Rasterizer, type Capture } from './gpu-raster';
 import { CompositeRenderer } from './gpu-renderer';
 import { markSurface } from './input';
@@ -105,28 +112,14 @@ export async function createGpuCanvas(
   surface.append(canvas);
 
   const atlasSize = Math.min(options.atlasSize ?? 4096, device.limits.maxTextureDimension2D);
-  // What is on screen survives a full atlas: whole snapshots first, then sharp tiles.
   const atlas: Atlas = new Atlas(
     device,
     atlasSize,
     Math.min(options.atlasLayers ?? 5, device.limits.maxTextureArrayLayers),
-    function* () {
-      const { visible, detailScale, view } = planner;
-      const onScreen = (tile: Tile) => intersects(tile.rect, view);
-      for (const node of visible) yield node.slot;
-      for (const node of visible) {
-        for (const tile of node.tiles) {
-          if (tile.scale === detailScale && !tile.stale && onScreen(tile)) yield tile.slot;
-        }
-      }
-      for (const node of visible) {
-        yield node.preview;
-        for (const tile of node.tiles) if (onScreen(tile)) yield tile.slot;
-      }
-    },
+    () => planner.keep(),
   );
   const pages = new Pages(canvas, Math.min(options.pageSize ?? DEFAULT_PAGE_SIZE, atlasSize));
-  const rasterizer = new Rasterizer(device, atlas, atlasSize, {
+  const rasterizer = new Rasterizer(device, atlas, {
     calls: options.maxRastersPerFrame ?? 12,
     ms: options.rasterTimeBudgetMs ?? 6,
     pixels: options.rasterPixelBudget ?? 24_000_000,
@@ -185,6 +178,10 @@ export async function createGpuCanvas(
   let settleTimer = 0;
   /** A frame asked for this paint event; others come from content animating on its own. */
   let awaitingPaint = false;
+  const requestPaint = () => {
+    awaitingPaint = true;
+    canvas.requestPaint();
+  };
   const stats = {
     visible: 0,
     pending: 0,
@@ -225,9 +222,8 @@ export async function createGpuCanvas(
 
   /** Snapshots asked for and not drawn yet. Their pages stay drawable until they are. */
   const captures: Capture[] = [];
-  const isPinned = (page: Page): boolean =>
-    captures.some((capture) => capture.node.page === page) ||
-    live.held().some((node) => node?.page === page);
+  const captured = (page: Page) => captures.some((capture) => capture.node.page === page);
+  const isPinned = (page: Page) => captured(page) || live.holds(page);
 
   const live: Live = new Live({
     canvas,
@@ -239,32 +235,40 @@ export async function createGpuCanvas(
     frameNumber: () => frameNumber,
     canvasDpr,
     schedule,
-    isPinned,
+    captured,
     onPress: () => {
       if (effects.size) schedule();
     },
   });
 
-  /** Moves a node onto a page of its own, so deep zooms rasterize only it. */
-  const lift = (node: GpuNode) => {
+  /**
+   * Moves a node to another page with `move`. The page it left is released from hit testing and
+   * parked unless something else holds it. Returns whether the node was live.
+   */
+  const relocate = (node: GpuNode, move: () => void) => {
     const wasLive = live.current === node;
     if (wasLive) live.set(null);
-    const previous = pages.lift(node);
-    // The whole snapshot is still valid: the node's pixels did not change, only its page.
+    const previous = node.page;
+    move();
     if (pages.has(previous) && !isPinned(previous)) {
       live.unpin(previous);
       previous.setDrawable(false, frameNumber);
     }
-    if (wasLive) live.pick();
+    return wasLive;
   };
-  const planner: Planner = new Planner(atlas, atlasSize, () => base.camera().zoom, lift, schedule);
+  /**
+   * Moves a node onto a page of its own, so deep zooms rasterize only it. Its whole snapshot
+   * stays valid: the pixels did not change, only the page. The pointer did not move either, so
+   * a live node is live again.
+   */
+  const lift = (node: GpuNode) => {
+    if (relocate(node, () => pages.lift(node))) live.pick();
+  };
+  const planner: Planner = new Planner(atlas, lift, schedule);
 
   const composite = () => {
     const { visible, detailScale, view } = planner;
-    let instances = visible.length;
-    for (const node of visible) instances += node.tiles.length + (node.preview ? 1 : 0);
-    instances += selection.size + 1;
-    renderer.begin(instances);
+    renderer.begin();
     effectsMoving = false;
     const pushRing = (element: Element, color: number[], width: number) => {
       const rect = ringRect(element);
@@ -302,7 +306,7 @@ export async function createGpuCanvas(
       renderer.quad(node.rect, image);
       // Back to front: stale tiles and tiles from an earlier zoom, the preview of a change,
       // then this zoom's fresh tiles.
-      const current = (tile: Tile) => tile.scale === detailScale && !tile.stale;
+      const current = (tile: Tile) => isCurrentTile(tile, detailScale);
       for (const tile of node.tiles)
         if (!current(tile) && atlas.isValid(tile.slot)) renderer.quad(tile.rect, tile.slot);
       if (node.preview && atlas.isValid(node.preview))
@@ -339,14 +343,8 @@ export async function createGpuCanvas(
     const camera = base.camera();
     const view = base.view();
     const moving = start - lastCameraChange < SETTLE_MS;
-    planner.plan(
-      nodes.values(),
-      view,
-      rasterScaleFor(camera.zoom * dpr),
-      camera.zoom * dpr,
-      moving,
-    );
-    const { plans } = planner;
+    planner.plan(nodes.values(), view, camera.zoom, dpr, moving);
+    const { plans, ordered } = planner;
 
     if (!inPaint && plans.size > 0) {
       // Only consecutive frames say how long a frame takes.
@@ -358,14 +356,13 @@ export async function createGpuCanvas(
       }
       lastFrameAt = start;
       let promoted = 0;
-      for (const plan of [...plans.values()].sort((a, b) => a.priority - b.priority)) {
+      for (const plan of ordered) {
         if (plan.page.drawable) continue;
         if (promoted++ >= promotionsPerFrame) break;
         plan.page.setDrawable(true, frameNumber);
       }
       // The paint event follows in this same rendering update and finishes the frame.
-      awaitingPaint = true;
-      canvas.requestPaint();
+      requestPaint();
       return;
     }
 
@@ -373,17 +370,12 @@ export async function createGpuCanvas(
     stats.rasterizedLastFrame = 0;
     stats.rasterCallsLastFrame = 0;
     if (inPaint && plans.size > 0) {
-      const drawn = rasterizer.rasterize(plans, pages, frameNumber, start, isPinned);
+      const drawn = rasterizer.rasterize(ordered, pages, frameNumber, start, isPinned);
       pending = drawn.pending;
       stats.rasterizedLastFrame = drawn.rasterized;
       stats.rasterCallsLastFrame = drawn.calls;
     }
-    // A page promoted for a camera that has moved on has nothing left to draw: park it, or
-    // Chrome keeps painting it every frame.
-    for (const page of pages.all()) {
-      if (page.drawable && !plans.has(page) && page.promotedFrame < frameNumber && !isPinned(page))
-        page.setDrawable(false, frameNumber);
-    }
+    pages.parkIdle(plans, frameNumber, isPinned);
     stats.rasterMs = performance.now() - start;
     composite();
     stats.frames++;
@@ -397,10 +389,8 @@ export async function createGpuCanvas(
   canvas.onpaint = (event) => {
     if (captures.length) {
       rasterizer.capture(captures);
-      if (captures.length) {
-        awaitingPaint = true;
-        canvas.requestPaint();
-      } else schedule();
+      if (captures.length) requestPaint();
+      else schedule();
     }
     // CSS-only changes (hover, focus rings, transitions) on pinned pages reach us only here.
     let changed = false;
@@ -471,29 +461,8 @@ export async function createGpuCanvas(
     addNode(element, rect) {
       styleNode(element);
       element.style.pointerEvents = 'none';
-      const node = {
-        element,
-        rect,
-        slotScale: 0,
-        thumb: null,
-        thumbStale: false,
-        thumbAt: -Infinity,
-        shown: 0,
-        shownFrame: -1,
-        targetScale: 0,
-        tiles: [] as Tile[],
-        preview: null,
-        previewRect: null,
-        previewScale: 0,
-        previewTarget: null,
-        previewTargetScale: 0,
-        changedAt: -Infinity,
-        refreshedAt: -Infinity,
-        wholeStale: false,
-        solo: false,
-        priority: 0,
-      } as GpuNode;
-      pages.attach(node);
+      const node = createGpuNode(element, rect, pages.place(element, rect));
+      pages.join(node);
       nodes.set(element, node);
       schedule();
     },
@@ -504,9 +473,11 @@ export async function createGpuCanvas(
       node.rect = rect;
       ringRects.clear();
       if (resized) {
-        if (live.current === node) live.set(null);
-        pages.release(node);
-        pages.attach(node);
+        relocate(node, () => {
+          pages.release(node);
+          placeNode(node, pages.place(element, rect));
+          pages.join(node);
+        });
       }
       schedule();
     },
@@ -554,8 +525,7 @@ export async function createGpuCanvas(
       return new Promise((resolve, reject) => {
         captures.push({ node, scale, resolve, reject, tries: 0 });
         node.page.setDrawable(true, frameNumber);
-        awaitingPaint = true;
-        canvas.requestPaint();
+        requestPaint();
       });
     },
     setBackground(color) {

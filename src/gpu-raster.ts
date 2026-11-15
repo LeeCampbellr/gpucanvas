@@ -1,6 +1,15 @@
 import type { Atlas, AtlasSlot } from './atlas';
 import { captureRegion } from './capture';
-import { hasFreshThumb, nodeRegion, texels, THUMBNAIL_SCALE, type GpuNode } from './gpu-node';
+import {
+  hasFreshThumb,
+  nodeRegion,
+  recordPartial,
+  recordWhole,
+  setThumb,
+  texels,
+  THUMBNAIL_SCALE,
+  type GpuNode,
+} from './gpu-node';
 import type { Pages } from './gpu-pages';
 import type { PagePlan } from './gpu-plan';
 import type { Page } from './page';
@@ -29,49 +38,28 @@ export interface RasterBudget {
   ms: number;
 }
 
-const setThumb = (node: GpuNode, slot: AtlasSlot, now: number) => {
-  node.thumb = slot;
-  node.thumbStale = false;
-  node.thumbAt = now;
-};
-
-/** Records a snapshot that reached the atlas; at thumbnail scale it is the node's thumbnail. */
-const drawn = (node: GpuNode, slot: AtlasSlot, scale: number, now: number) => {
-  node.slot = slot;
-  node.slotScale = scale;
-  if (scale === THUMBNAIL_SCALE) setThumb(node, slot, now);
-  else if (node.dirty) node.thumbStale = true;
-  if (node.dirty) {
-    // A preview from before the change would cover the fresh snapshot.
-    node.preview = null;
-    node.refreshedAt = now;
-  }
-  node.dirty = false;
-  node.wholeStale = false;
-};
-
 /** Draws planned snapshots, previews, tiles and thumbnails into the atlas. */
 export class Rasterizer {
   constructor(
     private readonly device: GPUDevice,
     private readonly atlas: Atlas,
-    private readonly atlasSize: number,
     private readonly budget: RasterBudget,
   ) {}
 
   /**
-   * Rasterizes planned pages in priority order within the frame's budget. A page where many
+   * Rasterizes planned pages, most urgent first, within the frame's budget. A page where many
    * nodes need pixels is drawn whole in one call; otherwise each node is cropped out. Pages that
    * end up with nothing left to draw are parked unless `isPinned` holds them.
    */
   rasterize(
-    plans: Map<Page, PagePlan>,
+    ordered: readonly PagePlan[],
     pages: Pages,
     frameNumber: number,
     start: number,
     isPinned: (page: Page) => boolean,
   ) {
-    const { atlas, atlasSize, budget } = this;
+    const { atlas, budget } = this;
+    const atlasSize = atlas.size;
     let calls = 0;
     let pixels = 0;
     let rasterized = 0;
@@ -79,7 +67,6 @@ export class Rasterizer {
     const overBudget = () =>
       calls > 0 &&
       (calls >= budget.calls || pixels >= budget.pixels || performance.now() - start >= budget.ms);
-    const ordered = [...plans.values()].sort((a, b) => a.priority - b.priority);
     for (const plan of ordered) {
       const { page } = plan;
       // A page promoted this frame may still hold the snapshot from before it was parked.
@@ -122,7 +109,7 @@ export class Rasterizer {
             width: node.rect.width * scale,
             height: node.rect.height * scale,
           };
-          drawn(node, part, scale, start);
+          recordWhole(node, part, scale, start);
         }
         rasterized += members.size;
       } else {
@@ -144,7 +131,7 @@ export class Rasterizer {
           }
           calls++;
           pixels += slot.width * slot.height;
-          drawn(node, slot, node.targetScale, start);
+          recordWhole(node, slot, node.targetScale, start);
           rasterized++;
         }
       }
@@ -164,13 +151,7 @@ export class Rasterizer {
         calls++;
         warm.add(scale);
         pixels += slot.width * slot.height;
-        // The node's whole snapshot now lags behind what the preview and tiles show.
-        if (node.dirty) {
-          node.dirty = false;
-          node.wholeStale = true;
-          node.thumbStale = true;
-          node.refreshedAt = start;
-        }
+        recordPartial(node, start);
         return slot;
       };
       for (const node of plan.previews) {
