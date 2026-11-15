@@ -181,11 +181,7 @@ export function Kpi({ label, value, delta }: { label: string; value: string; del
 }
 
 export function Status({ entry }: { entry: Entry }) {
-  return (
-    <Chip color={entry.tone} variant="subtle">
-      {entry.status}
-    </Chip>
-  );
+  return <Chip color={entry.tone}>{entry.status}</Chip>;
 }
 
 /** Downloads `entries` as a CSV file, the way an Export button would. */

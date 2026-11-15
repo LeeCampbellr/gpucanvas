@@ -1,8 +1,6 @@
 import { RiArrowRightLine } from '@remixicon/react';
 import { Badge, Button, flow } from '../../ui';
-import type { Product } from '../../products';
 import { Cover, Logo, type Props } from '../parts';
-import { Pricing } from './pricing';
 
 export function Landing({ product, seed }: Props) {
   return (

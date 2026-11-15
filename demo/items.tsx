@@ -1,18 +1,11 @@
 import { useState, type ReactNode } from 'react';
-import {
-  RiArrowRightUpLine,
-  RiCloseLine,
-  RiLogoutBoxRLine,
-  RiSettings3Line,
-  RiSparkling2Line,
-  RiUser3Line,
-} from '@remixicon/react';
+import { RiLogoutBoxRLine, RiSettings3Line, RiSparkling2Line, RiUser3Line } from '@remixicon/react';
 import { art } from './art';
 import { person } from './products';
 import { Avatar, cx, Notification } from './ui';
 
 /**
- * Everything besides product screens (screens.tsx) that can sit on the playground: a few loose
+ * Everything besides product screens (screens/) that can sit on the playground: a few loose
  * components, and what people scatter around screens on a real canvas (stickies, comments, arrows,
  * pictures). Sizes are the natural size of each item.
  */
@@ -130,75 +123,6 @@ function Picture({ variant }: { variant: number }) {
       draggable={false}
       className="size-full rounded-xl object-cover shadow-md"
     />
-  );
-}
-
-function Announcement() {
-  const [open, setOpen] = useState(true);
-  const [more, setMore] = useState(false);
-  if (!open) return null;
-  return (
-    <div className={cx('flex h-full flex-col gap-2 p-4', SURFACE)}>
-      <div className="flex items-center gap-2">
-        <RiSparkling2Line className="size-5 text-accent-500" />
-        <span className="text-body-2-semibold text-text-primary">Two new components</span>
-        <button
-          aria-label="Dismiss"
-          onClick={() => setOpen(false)}
-          className="ms-auto text-text-tertiary"
-        >
-          <RiCloseLine className="size-4" />
-        </button>
-      </div>
-      <p className="text-body-2-regular text-text-secondary">
-        Carousel and one time code inputs are ready to drop in today.
-      </p>
-      {more ? (
-        <ul className="mt-auto list-disc ps-4 text-body-2-regular text-text-secondary">
-          <li>Carousel: swipe, arrows and autoplay</li>
-          <li>One time code: paste fills every box</li>
-        </ul>
-      ) : (
-        <button
-          className="mt-auto w-fit text-body-2-medium text-text-link"
-          onClick={() => setMore(true)}
-        >
-          See what's new
-        </button>
-      )}
-    </div>
-  );
-}
-
-function Stat() {
-  const [week, setWeek] = useState(false);
-  return (
-    <div className={cx('flex h-full flex-col p-5', SURFACE)}>
-      <div className="flex items-center justify-between">
-        <span className="text-body-2-medium text-text-tertiary">Monthly revenue</span>
-        <button
-          onClick={() => setWeek((value) => !value)}
-          className="text-caption-1-medium text-text-link"
-        >
-          {week ? 'This week' : 'This month'}
-        </button>
-      </div>
-      <span className="mt-2 text-display-4-semibold text-text-primary">
-        {week ? '$11,204' : '$48,920'}
-      </span>
-      <span className="mt-1 flex items-center gap-1 text-caption-1-medium text-lime-600">
-        <RiArrowRightUpLine className="size-4" /> {week ? '4.1%' : '12.6%'} vs last period
-      </span>
-      <div className="mt-auto flex h-10 items-end gap-1">
-        {[38, 52, 44, 61, 57, 72, 66, 80, 74, 92].map((height, i) => (
-          <span
-            key={i}
-            className="flex-1 rounded-sm bg-accent-500"
-            style={{ height: `${week ? 100 - height * 0.6 : height}%`, opacity: 0.35 + i * 0.065 }}
-          />
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -361,8 +285,6 @@ export const KINDS = {
       />
     ),
   },
-  announcement: { width: 280, height: 152, render: () => <Announcement /> },
-  stat: { width: 330, height: 198, render: () => <Stat /> },
   menu: { width: 266, height: 226, render: () => <Menu /> },
 } satisfies Record<string, ItemKind>;
 

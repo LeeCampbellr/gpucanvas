@@ -93,19 +93,17 @@ export function ListPage({ product, seed }: Props) {
       </div>
       <Table aria-label={product.things}>
         <TableHeader>
-          <TableColumn id="name" isRowHeader>
-            Name
-          </TableColumn>
-          <TableColumn id="detail">Details</TableColumn>
-          <TableColumn id="owner">Owner</TableColumn>
-          <TableColumn id="status">Status</TableColumn>
-          <TableColumn id="value">Value</TableColumn>
+          <TableColumn>Name</TableColumn>
+          <TableColumn>Details</TableColumn>
+          <TableColumn>Owner</TableColumn>
+          <TableColumn>Status</TableColumn>
+          <TableColumn>Value</TableColumn>
         </TableHeader>
         <TableBody>
           {shown.map((entry, index) => {
             const [name, src] = person(seed + index);
             return (
-              <TableRow key={entry.title} id={entry.title}>
+              <TableRow key={entry.title}>
                 <TableCell>
                   <span className="text-body-medium text-text-primary">{entry.title}</span>
                 </TableCell>

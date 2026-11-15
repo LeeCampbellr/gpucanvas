@@ -8,7 +8,7 @@ import {
 } from 'react';
 import { RiCheckboxCircleFill } from '@remixicon/react';
 
-/** Bubbles up to the demo, which moves the camera to the next (1) or previous (-1) screen. */
+/** Bubbles up to the demo (flow.ts), which moves the camera to the next (1) or previous (-1) screen. */
 export const FLOW_EVENT = 'demo:flow';
 
 const TOAST_EVENT = 'demo:toast';

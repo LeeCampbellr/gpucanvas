@@ -29,9 +29,7 @@ export function Analytics({ product, seed }: Props) {
             <span className="text-headline-semibold text-text-primary">
               {product.kpis[1][0]}, by month
             </span>
-            <Chip color="lime" variant="subtle">
-              {product.kpis[1][2]}
-            </Chip>
+            <Chip color="lime">{product.kpis[1][2]}</Chip>
           </div>
           <Bars seed={seed} count={12} height={330} />
           <div className="flex justify-between text-caption-1-regular text-text-tertiary">

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Input, Switch, Tab, TabList, Tabs, Textarea, toast } from '../../ui';
-import { person, type Product } from '../../products';
+import { person } from '../../products';
 import type { Props } from '../parts';
 import { AppPage } from './shell';
 

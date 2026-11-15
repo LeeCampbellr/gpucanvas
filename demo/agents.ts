@@ -1,5 +1,6 @@
-import type { GpuCanvas, Point, Rect } from '../src/index';
-import { center, intersects, union } from './geometry';
+import { worldToScreen, type GpuCanvas, type Point, type Rect } from '../src/index';
+import { center, intersects, union, worldRectOf } from './geometry';
+import { frameOf } from './screens';
 
 /**
  * Agents at work on the canvas. On load the canvas opens on one cluster of blank screens and the
@@ -70,26 +71,26 @@ const html = (markup: string) => {
   return template.content.firstElementChild as HTMLElement;
 };
 
-function cursor(color: string) {
+function cursor() {
   return html(`<div style="position:absolute;left:0;top:0;pointer-events:none;z-index:3;will-change:transform;display:none">
-    <div data-trail style="position:absolute;left:3px;top:3px;height:3px;border-radius:2px;transform-origin:0 50%;opacity:0;background:linear-gradient(90deg,${color},transparent)"></div>
-    <svg width="18" height="20" viewBox="0 0 18 20" style="position:relative;display:block;filter:drop-shadow(0 1px 2px rgb(0 0 0 / 0.3))"><path d="${ARROW}" fill="${color}" stroke="white" stroke-width="1.5" stroke-linejoin="round"/></svg>
-    <span style="position:absolute;left:14px;top:17px;display:flex;align-items:center;gap:5px;background:${color};color:white;font:600 12px/1 Inter Variable,sans-serif;padding:4px 8px 4px 6px;border-radius:999px;white-space:nowrap;box-shadow:0 1px 3px rgb(0 0 0 / 0.25)"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="${MARK}"/></svg>${NAME}</span>
+    <div data-trail style="position:absolute;left:3px;top:3px;height:3px;border-radius:2px;transform-origin:0 50%;opacity:0;background:linear-gradient(90deg,${COLOR},transparent)"></div>
+    <svg width="18" height="20" viewBox="0 0 18 20" style="position:relative;display:block;filter:drop-shadow(0 1px 2px rgb(0 0 0 / 0.3))"><path d="${ARROW}" fill="${COLOR}" stroke="white" stroke-width="1.5" stroke-linejoin="round"/></svg>
+    <span style="position:absolute;left:14px;top:17px;display:flex;align-items:center;gap:5px;background:${COLOR};color:white;font:600 12px/1 Inter Variable,sans-serif;padding:4px 8px 4px 6px;border-radius:999px;white-space:nowrap;box-shadow:0 1px 3px rgb(0 0 0 / 0.25)"><svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="${MARK}"/></svg>${NAME}</span>
   </div>`);
 }
 
 /** The box an agent drags over a block: an outline, a handle on each corner and the block's size. */
-function selectionBox(color: string, size: string) {
+function selectionBox(size: string) {
   const handle = (x: number, y: number) =>
-    `<i style="position:absolute;left:${x * 100}%;top:${y * 100}%;width:7px;height:7px;transform:translate(-50%,-50%);background:white;border:1.5px solid ${color}"></i>`;
-  return html(`<div style="position:absolute;left:0;top:0;pointer-events:none;z-index:2;border:1.5px solid ${color};background:${color}14;border-radius:2px">
+    `<i style="position:absolute;left:${x * 100}%;top:${y * 100}%;width:7px;height:7px;transform:translate(-50%,-50%);background:white;border:1.5px solid ${COLOR}"></i>`;
+  return html(`<div style="position:absolute;left:0;top:0;pointer-events:none;z-index:2;border:1.5px solid ${COLOR};background:${COLOR}14;border-radius:2px">
     ${handle(0, 0)}${handle(1, 0)}${handle(0, 1)}${handle(1, 1)}
-    <span style="position:absolute;left:50%;top:100%;margin-top:6px;transform:translateX(-50%);background:${color};color:white;font:500 10px/1.2 ui-monospace,monospace;padding:1px 4px;border-radius:3px;white-space:nowrap">${size}</span>
+    <span style="position:absolute;left:50%;top:100%;margin-top:6px;transform:translateX(-50%);background:${COLOR};color:white;font:500 10px/1.2 ui-monospace,monospace;padding:1px 4px;border-radius:3px;white-space:nowrap">${size}</span>
   </div>`);
 }
 
 function statusPill() {
-  return html(`<div style="position:absolute;left:50%;bottom:84px;transform:translateX(-50%);pointer-events:none;z-index:4;display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:999px;background:rgb(24 24 27 / 0.86);color:white;font:500 13px/1 Inter Variable,sans-serif;box-shadow:0 4px 16px rgb(0 0 0 / 0.3);transition:opacity 400ms">
+  return html(`<div style="position:absolute;left:50%;bottom:84px;transform:translateX(-50%);pointer-events:none;z-index:4;display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:999px;background:rgb(24 24 27 / 0.86);color:white;font:500 13px/1 Inter Variable,sans-serif;box-shadow:0 4px 16px rgb(0 0 0 / 0.3)">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="${COLOR}"><path d="${MARK}"/></svg>
     <span data-text></span>
   </div>`);
@@ -137,7 +138,7 @@ export function startAgents(canvas: GpuCanvas, count: number, intro: Rect | null
   };
   const screensIn = (rect: Rect) =>
     canvas.getNodesIn(rect).flatMap((node) => {
-      const frame = node.querySelector<HTMLElement>('.brand');
+      const frame = frameOf(node);
       const r = canvas.getNodeRect(node);
       return frame && r ? [{ node, rect: r, frame }] : [];
     });
@@ -182,12 +183,10 @@ export function startAgents(canvas: GpuCanvas, count: number, intro: Rect | null
   // Everything drawn over the canvas is anchored to a world point, so it rides along with the
   // camera: cursors glide between points, boxes grow from one, sparkles burst at one.
   const agents = Array.from({ length: count }, () => {
-    const color = COLOR;
-    const element = cursor(color);
+    const element = cursor();
     layer.append(element);
     const start = center(view());
     return {
-      color,
       element,
       trail: element.querySelector<HTMLElement>('[data-trail]')!,
       from: start,
@@ -226,10 +225,10 @@ export function startAgents(canvas: GpuCanvas, count: number, intro: Rect | null
     }
     return sleep(ms);
   };
-  const sparkle = (at: Point, color: string) => {
+  const sparkle = (at: Point) => {
     for (let i = 0; i < 3; i++) {
       const element = html(
-        `<div style="position:absolute;left:0;top:0;z-index:2;pointer-events:none"><b style="display:block;color:${color};font:700 13px/1 ui-monospace,monospace">+</b></div>`,
+        `<div style="position:absolute;left:0;top:0;z-index:2;pointer-events:none"><b style="display:block;color:${COLOR};font:700 13px/1 ui-monospace,monospace">+</b></div>`,
       );
       layer.append(element);
       const mark = { element, at };
@@ -256,9 +255,13 @@ export function startAgents(canvas: GpuCanvas, count: number, intro: Rect | null
 
   let raf = 0;
   const draw = () => {
-    const { x, y, zoom } = canvas.getCamera();
+    const camera = canvas.getCamera();
+    const { zoom } = camera;
     const now = performance.now();
-    const screen = (p: Point) => `translate(${(p.x - x) * zoom}px, ${(p.y - y) * zoom}px)`;
+    const screen = (p: Point) => {
+      const at = worldToScreen(camera, p);
+      return `translate(${at.x}px, ${at.y}px)`;
+    };
     for (const agent of agents) {
       agent.element.style.display = agent.shown ? 'block' : 'none';
       agent.element.style.transform = screen(where(agent, now));
@@ -273,19 +276,6 @@ export function startAgents(canvas: GpuCanvas, count: number, intro: Rect | null
     raf = requestAnimationFrame(draw);
   };
   raf = requestAnimationFrame(draw);
-
-  /** Where `element` sits in the world, from its box inside its node at any zoom. */
-  const worldRect = ({ node, rect }: Screen, element: HTMLElement): Rect => {
-    const box = node.getBoundingClientRect();
-    const r = element.getBoundingClientRect();
-    const scale = rect.width / (box.width || 1);
-    return {
-      x: rect.x + (r.x - box.x) * scale,
-      y: rect.y + (r.y - box.y) * scale,
-      width: r.width * scale,
-      height: r.height * scale,
-    };
-  };
 
   const progress = () => {
     if (phase !== 'intro') return;
@@ -304,7 +294,7 @@ export function startAgents(canvas: GpuCanvas, count: number, intro: Rect | null
     const per = Math.max(1, Math.ceil(pieces.length / pace.steps));
     // In one task, so a blank intro screen never shows unbuilt blocks in between.
     for (const piece of pieces) piece.classList.add('agent-piece', 'agent-hidden', kindOf(piece));
-    frame.style.setProperty('--agent', agent.color);
+    frame.style.setProperty('--agent', COLOR);
     frame.classList.add('agent-building', 'agent-built');
     if (!agent.shown) {
       agent.from = agent.to = center(rect);
@@ -315,19 +305,16 @@ export function startAgents(canvas: GpuCanvas, count: number, intro: Rect | null
       let first = true;
       for (let i = 0; i < pieces.length && !stopped; i += per) {
         const group = pieces.slice(i, i + per);
-        const area = union(group.map((piece) => worldRect(target, piece)));
+        const area = union(group.map((piece) => worldRectOf(node, rect, piece)));
         await glide(agent, area, first ? pace.flight : pace.reach);
         first = false;
-        const element = selectionBox(
-          agent.color,
-          `${Math.round(area.width)} × ${Math.round(area.height)}`,
-        );
+        const element = selectionBox(`${Math.round(area.width)} × ${Math.round(area.height)}`);
         layer.append(element);
         const box = { element, rect: area, start: performance.now(), ms: pace.drag };
         boxes.add(box);
         await glide(agent, { x: area.x + area.width, y: area.y + area.height }, pace.drag);
         for (const piece of group) piece.classList.remove('agent-hidden');
-        sparkle({ x: area.x + area.width, y: area.y + area.height }, agent.color);
+        sparkle({ x: area.x + area.width, y: area.y + area.height });
         element
           .animate({ opacity: [1, 0] }, { duration: 300, delay: 120, fill: 'forwards' })
           .finished.then(() => {
@@ -381,8 +368,9 @@ export function startAgents(canvas: GpuCanvas, count: number, intro: Rect | null
       phase = 'ambient';
       if (!intro) return;
       for (const s of introScreens()) s.frame.classList.add('agent-built');
-      pill.style.opacity = '0';
-      setTimeout(() => pill.remove(), 400);
+      pill
+        .animate({ opacity: [1, 0] }, { duration: 400, easing: 'ease', fill: 'forwards' })
+        .finished.then(() => pill.remove());
     },
     stop() {
       stopped = true;

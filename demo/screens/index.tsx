@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { cx, useToasts } from '../ui';
-import type { Product } from '../products';
+import type { Product, ProductLayout } from '../products';
 import type { Props } from './parts';
 import { Dashboard } from './desktop/dashboard';
 import { ListPage } from './desktop/list';
@@ -28,13 +28,13 @@ import { PhoneNotifications } from './phone/notifications';
 import { PhoneBooking } from './phone/booking';
 
 /**
- * Product screens made of the demo's own components (ui.tsx), the way they sit on a design canvas: the
+ * Product screens made of the demo's own components (ui/), the way they sit on a design canvas: the
  * frame's name above a framed screen. A layout takes a product and a seed, so every cluster
  * shows its own brand, copy and numbers. Every screen is one canvas node and fully interactive.
  */
 const DESKTOP = { width: 1440, height: 900 };
 
-export const PHONE = { width: 402, height: 874 };
+const PHONE = { width: 402, height: 874 };
 
 /** Room above the frame for its name. */
 const LABEL = 30;
@@ -44,6 +44,21 @@ const LABEL = 30;
  * should show, shadows included, stays inside it.
  */
 const BLEED = 28;
+
+/** A product screen is made for a desktop browser or a phone. */
+export type ScreenKind = 'desktop' | 'phone';
+
+/** A product screen by what it is: one layout of one kind. */
+export interface ScreenRef {
+  kind: ScreenKind;
+  layout: string;
+}
+
+/** The class on a screen's frame; styles.css re-brands everything inside it. */
+const FRAME_CLASS = 'brand';
+
+/** The framed product screen inside canvas node `node`, or null for notes and other items. */
+export const frameOf = (node: Element) => node.querySelector<HTMLElement>(`.${FRAME_CLASS}`);
 
 function Frame({
   name,
@@ -62,7 +77,8 @@ function Frame({
       <span className="h-[30px] truncate text-body-2-medium text-text-tertiary">{name}</span>
       <div
         className={cx(
-          'brand relative flex-1 overflow-hidden bg-background-primary-default shadow-xl ring-1 ring-black/5 dark:ring-white/10',
+          FRAME_CLASS,
+          'relative flex-1 overflow-hidden bg-background-primary-default shadow-xl ring-1 ring-black/5 dark:ring-white/10',
           phone ? 'rounded-[48px]' : 'rounded-2xl',
         )}
         style={{ '--brand': product.brand } as CSSProperties}
@@ -108,37 +124,14 @@ const PHONE_SCREENS: Record<string, Screen> = {
   Booking: PhoneBooking,
 };
 
-/** Layouts that only make sense for some products: a player for audio, checkout for shops. */
-const ONLY_FOR: Record<string, string[]> = {
-  Player: ['Tempo', 'Airwaves'],
-  Checkout: [
-    'Forkful',
-    'Atelier',
-    'Pantry',
-    'Encore',
-    'Fern',
-    'Wayfarer',
-    'Roam',
-    'Carely',
-    'Stride',
-  ],
-  Booking: [
-    'Wayfarer',
-    'Carely',
-    'Stride',
-    'Roam',
-    'Encore',
-    'Nestwise',
-    'Forkful',
-    'Lumen',
-    'Crew',
-  ],
-};
+/** Layouts that only make sense for some products, which list them in `Product.layouts`. */
+const ONLY_FOR_SOME = new Set<string>(['Player', 'Checkout', 'Booking'] satisfies ProductLayout[]);
 
 /** The layouts of `kind` that suit `product`. */
-export function layoutsFor(kind: 'desktop' | 'phone', product: Product) {
+export function layoutsFor(kind: ScreenKind, product: Product) {
   return Object.keys(kind === 'desktop' ? DESKTOP_SCREENS : PHONE_SCREENS).filter(
-    (layout) => !ONLY_FOR[layout] || ONLY_FOR[layout].includes(product.name),
+    (layout) =>
+      !ONLY_FOR_SOME.has(layout) || (product.layouts ?? []).includes(layout as ProductLayout),
   );
 }
 
@@ -150,16 +143,11 @@ export const DESKTOP_SIZE = {
 export const PHONE_SIZE = { width: PHONE.width + BLEED * 2, height: PHONE.height + LABEL + BLEED };
 
 /** A screen's frame name, the way a designer would name it: `Tempo / Web / Sign in`. */
-export const screenName = (kind: 'desktop' | 'phone', layout: string, product: Product) =>
+const screenName = (kind: ScreenKind, layout: string, product: Product) =>
   `${product.name} / ${kind === 'desktop' ? 'Web' : 'iOS'} / ${layout === 'List' ? product.things : layout}`;
 
 /** One framed screen of `product`. */
-export function renderScreen(
-  kind: 'desktop' | 'phone',
-  layout: string,
-  product: Product,
-  seed: number,
-) {
+export function renderScreen(kind: ScreenKind, layout: string, product: Product, seed: number) {
   const Screen = (kind === 'desktop' ? DESKTOP_SCREENS : PHONE_SCREENS)[layout];
   return (
     <Frame name={screenName(kind, layout, product)} product={product} phone={kind === 'phone'}>

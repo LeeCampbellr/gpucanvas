@@ -4,9 +4,16 @@ import { avatar } from './art';
 import type { Rect } from '../src/index';
 import { CanvasNode } from '../src/react';
 import { KINDS, type KindName } from './items';
-import { PRODUCTS, type Product } from './products';
-import { DESKTOP_SIZE, layoutsFor, PHONE_SIZE, renderScreen, screenName } from './screens';
-import { nodeClass } from './bench';
+import { PEOPLE, PRODUCTS, type Product } from './products';
+import {
+  DESKTOP_SIZE,
+  layoutsFor,
+  PHONE_SIZE,
+  renderScreen,
+  type ScreenKind,
+  type ScreenRef,
+} from './screens';
+import { intersects } from './geometry';
 
 /**
  * The playground: a studio's working canvas. Each cluster is one product's screens (its web app,
@@ -17,10 +24,8 @@ import { nodeClass } from './bench';
 interface Item {
   rect: Rect;
   render: () => ReactNode;
-  /** A desktop or phone product screen, as opposed to a note, comment or other annotation. */
-  screen?: boolean;
-  /** A screen's caption, like `Tempo / Web / Sign in`. */
-  name?: string;
+  /** A product screen's kind and layout, unset for notes, comments and other annotations. */
+  screen?: ScreenRef;
 }
 
 interface Cluster {
@@ -130,9 +135,11 @@ const TEMPLATES: Template[] = [
 ];
 
 const TOTAL_WEIGHT = TEMPLATES.reduce((sum, template) => sum + template.weight, 0);
-const AUTHORS = ['Ann', 'Livia', 'Jaydon', 'Maria', 'Kianna'].map(
-  (name) => [name, avatar(name)] as const,
-);
+/** Cluster titles name who edited them last: the first five people, by first name. */
+const AUTHORS = PEOPLE.slice(0, 5).map(([full]) => {
+  const name = full.split(' ')[0];
+  return [name, avatar(name)] as const;
+});
 
 /** mulberry32: small, fast and the same on every engine. */
 function random(seed: number) {
@@ -195,19 +202,18 @@ function buildCluster(next: () => number, product: Product): Item[] {
         width = Math.max(width, 196);
         continue;
       }
-      const screen = SCREEN.exec(name);
+      const match = SCREEN.exec(name);
+      const screen = match ? { kind: match[1] as ScreenKind, layout: match[2] } : undefined;
       const kind = screen
         ? {
-            ...(screen[1] === 'desktop' ? DESKTOP_SIZE : PHONE_SIZE),
-            render: (seed: number) =>
-              renderScreen(screen[1] as 'desktop' | 'phone', screen[2], product, seed),
+            ...(screen.kind === 'desktop' ? DESKTOP_SIZE : PHONE_SIZE),
+            render: (seed: number) => renderScreen(screen.kind, screen.layout, product, seed),
           }
         : KINDS[name as KindName];
       items.push({
         rect: { x: x + offset, y, width: kind.width, height: kind.height },
         render: () => kind.render(v),
-        screen: !!screen,
-        name: screen ? screenName(screen[1] as 'desktop' | 'phone', screen[2], product) : undefined,
+        screen,
       });
       y += kind.height + 20 + Math.round(next() * 16);
       width = Math.max(width, kind.width + offset);
@@ -261,17 +267,7 @@ export function buildPlayground(nodes: number, seed = 7): { clusters: Cluster[];
     return false;
   };
   const free = (rect: Rect) =>
-    !cells(rect, (key) =>
-      grid
-        .get(key)
-        ?.some(
-          (other) =>
-            rect.x < other.x + other.width &&
-            other.x < rect.x + rect.width &&
-            rect.y < other.y + other.height &&
-            other.y < rect.y + rect.height,
-        ),
-    );
+    !cells(rect, (key) => grid.get(key)?.some((other) => intersects(rect, other)));
 
   const clusters: Cluster[] = [];
   let minX = Infinity;
@@ -335,15 +331,13 @@ export function buildPlayground(nodes: number, seed = 7): { clusters: Cluster[];
   return { clusters, bounds: { x: minX, y: minY, width: maxX - minX, height: maxY - minY } };
 }
 
-/** Cluster `id`'s nodes; each carries `nodeClass(id, index)` so the bench can find it. */
-/** Whether a screen at `rect` opens blank, for the agents to build: it is in the opening view. */
-const inView = (rect: Rect, view: Rect | null) =>
-  !!view &&
-  rect.x < view.x + view.width &&
-  rect.x + rect.width > view.x &&
-  rect.y < view.y + view.height &&
-  rect.y + rect.height > view.y;
+/** The canvas node that holds item `index` of cluster `id`, in either engine. */
+export const nodeClass = (id: number, index: number) => `node-${id}-${index}`;
 
+/** Whether a screen at `rect` opens blank, for the agents to build: it is in the opening view. */
+const inView = (rect: Rect, view: Rect | null) => !!view && intersects(rect, view);
+
+/** Cluster `id`'s nodes; each carries `nodeClass(id, index)` so the bench can find it. */
 export const ClusterNodes = memo(function ClusterNodes({
   cluster,
   id,

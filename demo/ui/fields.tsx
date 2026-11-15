@@ -11,7 +11,6 @@ import {
 import { RiArrowDownSLine, RiCheckLine } from '@remixicon/react';
 import { cx } from './cx';
 import type { Icon } from './button';
-import { Tab } from './tabs';
 
 const FIELD =
   'w-full rounded-xl bg-background-primary-default text-body-2-regular text-text-primary ring-1 ring-border-button-default outline-none placeholder:text-text-tertiary focus:ring-2 focus:ring-accent-500';

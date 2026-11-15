@@ -37,6 +37,9 @@ export interface Entry {
   tone: Tone;
 }
 
+/** Phone layouts only some products have: a player for audio, checkout for shops, booking for visits. */
+export type ProductLayout = 'Player' | 'Checkout' | 'Booking';
+
 export interface Product {
   name: string;
   tagline: string;
@@ -54,6 +57,8 @@ export interface Product {
   features: string[];
   /** Covers for hero areas and galleries, drawn from a seed (see art.ts). */
   images: string[];
+  /** The layouts that suit this product beyond the ones every product gets. */
+  layouts?: ProductLayout[];
 }
 
 const e = (title: string, sub: string, value: string, status: string, tone: Tone): Entry => ({
@@ -104,6 +109,7 @@ export const PRODUCTS: Product[] = [
     icon: RiMusic2Line,
     nav: ['Listen now', 'Browse', 'Radio', 'Library', 'Playlists'],
     things: 'Tracks',
+    layouts: ['Player'],
     entries: [
       e('Midnight Drive', 'Neon Coast', '3:42', 'Playing', 'purple'),
       e('Paper Planes', 'Lila Moon', '4:05', 'Liked', 'rose'),
@@ -131,6 +137,7 @@ export const PRODUCTS: Product[] = [
     icon: RiPlaneLine,
     nav: ['Explore', 'Trips', 'Saved', 'Messages', 'Account'],
     things: 'Trips',
+    layouts: ['Checkout', 'Booking'],
     entries: [
       e('Lisbon long weekend', 'Jun 12 to Jun 15', '$1,240', 'Booked', 'lime'),
       e('Kyoto in autumn', 'Nov 3 to Nov 14', '$3,880', 'Planning', 'yellow'),
@@ -157,6 +164,7 @@ export const PRODUCTS: Product[] = [
     icon: RiRestaurantLine,
     nav: ['Home', 'Orders', 'Restaurants', 'Offers', 'Account'],
     things: 'Orders',
+    layouts: ['Checkout', 'Booking'],
     entries: [
       e('Sora Ramen', 'Tonkotsu, gyoza', '$32.50', 'On the way', 'yellow'),
       e('Pizzeria Uno', 'Margherita, salad', '$27.00', 'Delivered', 'lime'),
@@ -183,6 +191,7 @@ export const PRODUCTS: Product[] = [
     icon: RiRunLine,
     nav: ['Today', 'Workouts', 'Plans', 'Progress', 'Community'],
     things: 'Workouts',
+    layouts: ['Checkout', 'Booking'],
     entries: [
       e('Morning tempo run', '8.2 km, 5:12 /km', '42 min', 'Done', 'lime'),
       e('Upper body strength', '6 exercises', '35 min', 'Done', 'lime'),
@@ -208,6 +217,7 @@ export const PRODUCTS: Product[] = [
     icon: RiHome4Line,
     nav: ['Search', 'Saved', 'Tours', 'Offers', 'Messages'],
     things: 'Listings',
+    layouts: ['Booking'],
     entries: [
       e('Canal house, 3 bed', 'Jordaan, Amsterdam', '$1.2M', 'New', 'blue'),
       e('Loft with terrace', 'Kreuzberg, Berlin', '$740k', 'Open house', 'purple'),
@@ -259,6 +269,7 @@ export const PRODUCTS: Product[] = [
     icon: RiHeartPulseLine,
     nav: ['Overview', 'Appointments', 'Patients', 'Messages', 'Billing'],
     things: 'Appointments',
+    layouts: ['Checkout', 'Booking'],
     entries: [
       e('Lena Fischer', 'General checkup', '09:00', 'Checked in', 'lime'),
       e('Omar Haddad', 'Follow up, video', '09:30', 'Waiting', 'yellow'),
@@ -289,6 +300,7 @@ export const PRODUCTS: Product[] = [
     icon: RiBookOpenLine,
     nav: ['Home', 'Courses', 'Paths', 'Certificates', 'Community'],
     things: 'Courses',
+    layouts: ['Booking'],
     entries: [
       e('Product design basics', '12 lessons, Maria Lubin', '68%', 'In progress', 'yellow'),
       e('SQL for analysts', '18 lessons, Omar Haddad', '100%', 'Completed', 'lime'),
@@ -319,6 +331,7 @@ export const PRODUCTS: Product[] = [
     icon: RiShoppingBag3Line,
     nav: ['Shop', 'New in', 'Collections', 'Orders', 'Wishlist'],
     things: 'Products',
+    layouts: ['Checkout'],
     entries: [
       e('Linen shirt, sand', 'Apparel', '$89', 'In stock', 'lime'),
       e('Ceramic mug set', 'Home', '$48', 'Low stock', 'yellow'),
@@ -350,6 +363,7 @@ export const PRODUCTS: Product[] = [
     icon: RiTeamLine,
     nav: ['Jobs', 'Candidates', 'Interviews', 'Offers', 'Reports'],
     things: 'Candidates',
+    layouts: ['Booking'],
     entries: [
       e('Ann Press', 'Senior product designer', 'Stage 3', 'Interview', 'purple'),
       e('Jaydon Aminoff', 'Frontend engineer', 'Stage 2', 'Screening', 'blue'),
@@ -455,6 +469,7 @@ export const PRODUCTS: Product[] = [
     icon: RiMicLine,
     nav: ['Discover', 'Shows', 'Queue', 'Downloads', 'Studio'],
     things: 'Episodes',
+    layouts: ['Player'],
     entries: [
       e('The quiet founders', 'Build Club, ep. 112', '48 min', 'New', 'blue'),
       e('Inside a seed round', 'Money Talks, ep. 41', '36 min', 'Played', 'gray'),
@@ -480,6 +495,7 @@ export const PRODUCTS: Product[] = [
     icon: RiCake3Line,
     nav: ['Today', 'Recipes', 'Meal plan', 'Groceries', 'Saved'],
     things: 'Recipes',
+    layouts: ['Checkout'],
     entries: [
       e('Miso salmon bowls', '25 min, 4 servings', '520 kcal', 'Planned', 'blue'),
       e('Lemon ricotta pasta', '20 min, 2 servings', '610 kcal', 'Saved', 'purple'),
@@ -510,6 +526,7 @@ export const PRODUCTS: Product[] = [
     icon: RiTicket2Line,
     nav: ['Discover', 'Tickets', 'Following', 'Venues', 'Account'],
     things: 'Events',
+    layouts: ['Checkout', 'Booking'],
     entries: [
       e('Neon Coast live', 'Paradiso, Amsterdam', 'Jun 21', 'On sale', 'lime'),
       e('Jazz in the park', 'Vondelpark', 'Jun 28', 'Few left', 'yellow'),
@@ -535,6 +552,7 @@ export const PRODUCTS: Product[] = [
     icon: RiCarLine,
     nav: ['Map', 'Trips', 'Wallet', 'Rewards', 'Help'],
     things: 'Trips',
+    layouts: ['Checkout', 'Booking'],
     entries: [
       e('Home to office', 'Tesla Model 3', '$9.40', 'Completed', 'lime'),
       e('Airport run', 'VW ID.4', '$32.10', 'Completed', 'lime'),
@@ -564,6 +582,7 @@ export const PRODUCTS: Product[] = [
     icon: RiPlantLine,
     nav: ['My plants', 'Care', 'Shop', 'Diagnose', 'Community'],
     things: 'Plants',
+    layouts: ['Checkout'],
     entries: [
       e('Monstera', 'Living room, bright', 'Water today', 'Thirsty', 'yellow'),
       e('Fiddle leaf fig', 'Bedroom, indirect', 'In 3 days', 'Happy', 'lime'),

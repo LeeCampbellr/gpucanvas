@@ -81,7 +81,6 @@ export function Board({ product, seed }: Props) {
               {here.map((card) => (
                 <button
                   key={card.id}
-                  data-act={`card ${card.id}`}
                   onClick={() => advance(card.id)}
                   className={cx(
                     'flex shrink-0 flex-col gap-3 rounded-xl bg-background-primary-default p-4 text-start shadow-card ring-1 ring-black/5 dark:ring-white/10',
@@ -99,9 +98,7 @@ export function Board({ product, seed }: Props) {
                   <span className="text-body-2-regular text-text-tertiary">{card.sub}</span>
                   <div className="flex items-center justify-between">
                     {c === COLUMNS.length - 1 ? (
-                      <Chip color="lime" variant="subtle">
-                        Done
-                      </Chip>
+                      <Chip color="lime">Done</Chip>
                     ) : (
                       <Status entry={card.entry} />
                     )}

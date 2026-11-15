@@ -11,7 +11,6 @@ import {
   effects,
   fitCamera,
   supportsGpuCanvas,
-  toBlob,
   type AgentView,
   type Effect,
   type GpuCanvas as GpuCanvasInstance,
@@ -20,19 +19,20 @@ import {
   type TransformEvent,
 } from '../src/index';
 import { GpuCanvas, labelComponent, pickComponents } from '../src/react';
-import { loadResults, runBench, saveResult, type BenchResult } from './bench';
-import { centeredOn, flyTo } from './fly';
-import { DEMO_EFFECTS, parseEffect } from './effects';
-import { FlagNotice, Hints, Meter, NODE_COUNTS, Results, Toolbar } from './hud';
+import { finishBench, loadResults, runBench, type BenchResult } from './bench';
+import { flyTo } from './fly';
+import { DEMO_EFFECTS, type DemoEffect } from './effects';
+import { FlagNotice, Hints, Meter, Results, Toolbar } from './hud';
 import { startAgents, type Agents } from './agents';
 import { buildPlayground, ClusterNodes } from './playground';
-import { parseMode, parsePick, type Pick } from './settings';
-import { FLOW_EVENT, toast } from './ui';
+import { initial, NODE_COUNTS, reloadWith, rememberToolbar, type Pick } from './settings';
+import { handleShortcut } from './shortcuts';
+import { applyTheme, backgroundColor, readTheme, saveTheme } from './theme';
+import { saveSnapshot } from './snapshot';
+import { followFlows } from './flow';
 
-const params = new URLSearchParams(location.search);
 const gpuSupported = supportsGpuCanvas();
-const requested = parseMode(params.get('mode'));
-const MODE = requested === 'gpu' && !gpuSupported ? 'dom' : requested;
+const MODE = initial.mode === 'gpu' && !gpuSupported ? 'dom' : initial.mode;
 /**
  * Phones have far less memory: thousands of live React screens get the tab killed, on the GPU path
  * and more so as plain DOM. Without the GPU path other browsers start smaller too.
@@ -40,25 +40,15 @@ const MODE = requested === 'gpu' && !gpuSupported ? 'dom' : requested;
 const PHONE =
   matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
 const NODES =
-  Number(params.get('n')) || (PHONE ? (gpuSupported ? 1_000 : 250) : gpuSupported ? 5_000 : 1_000);
-/** `?hud=0` leaves only the canvas on screen, for recording footage. */
-const HUD = params.get('hud') !== '0';
-/**
- * The toolbar owns the remaining settings; the URL only remembers them across reloads. Agents are
- * the cursors building screens.
- */
+  initial.nodes ?? (PHONE ? (gpuSupported ? 1_000 : 250) : gpuSupported ? 5_000 : 1_000);
+/** Agents are the cursors building screens. */
 const AGENT_COUNT = 30;
-const INITIAL_AGENTS = params.get('agents') !== '0';
 /**
  * Edit: every click selects, drags move, handles resize, a double-click goes one level deeper.
  * Interact: clicks reach the components, and Shift selects.
  */
-const INITIAL_EDIT = params.get('edit') !== '0';
-const INITIAL_PICK = parsePick(params.get('pick'));
 const editorOptions = (pick: Pick): EditorOptions =>
   pick === 'component' ? { pick: pickComponents, label: labelComponent } : { pick };
-/** `?effect=glow` (or hue, blur, ripple, pixelate, grayscale): a shader on every component. */
-const INITIAL_EFFECT = parseEffect(params.get('effect'));
 const { clusters: CLUSTERS, bounds: BOUNDS } = buildPlayground(NODES);
 /** Where the bench works: clusters of product screens, not walls of notes. */
 const SHOWCASE = CLUSTERS.flatMap((cluster, id) =>
@@ -74,7 +64,7 @@ const INTRO_ZOOM = 0.16;
  */
 const INTRO = (() => {
   const first = SHOWCASE[0]?.bounds;
-  if (!INITIAL_AGENTS || !first) return null;
+  if (!initial.agents || !first) return null;
   const width = innerWidth / INTRO_ZOOM;
   const height = innerHeight / INTRO_ZOOM;
   return {
@@ -94,7 +84,7 @@ const MOUNTED_NODES = CLUSTERS.reduce<number[]>(
  * repaints the growing overview, so long frames finish far sooner than many short ones; while
  * someone pans, zooms or clicks, mounting drops to short frames so the canvas stays responsive.
  */
-const MOUNT_BUDGET_MS = Number(params.get('mountBudget')) || 50;
+const MOUNT_BUDGET_MS = initial.mountBudget ?? 50;
 const INTERACTIVE_MOUNT_BUDGET_MS = 6;
 let lastInput = -Infinity;
 /** Set once the viewer moves the camera, so the demo stops moving it for them. */
@@ -114,16 +104,7 @@ for (const type of ['wheel', 'pointerdown', 'keydown'] as const) {
 const overview = (canvas: GpuCanvasInstance) =>
   fitCamera(BOUNDS, canvas.surface.clientWidth, canvas.surface.clientHeight, 96);
 
-const THEME_KEY = 'gpucanvas.theme';
-const readTheme = () => {
-  try {
-    return (params.get('theme') ?? localStorage.getItem(THEME_KEY)) === 'dark';
-  } catch {
-    return false;
-  }
-};
-document.documentElement.classList.toggle('dark', readTheme());
-const backgroundColor = () => getComputedStyle(document.body).backgroundColor;
+applyTheme(readTheme());
 
 declare global {
   interface Window {
@@ -137,12 +118,6 @@ declare global {
     benchResult?: BenchResult;
     mountMs?: number;
   }
-}
-
-function navigate(changes: Record<string, string>) {
-  const next = new URLSearchParams(location.search);
-  for (const [key, value] of Object.entries(changes)) next.set(key, value);
-  location.search = next.toString();
 }
 
 /**
@@ -197,28 +172,21 @@ function applyTransform(canvas: GpuCanvasInstance, event: TransformEvent) {
   });
 }
 
-const isTyping = () =>
-  document.activeElement instanceof HTMLInputElement ||
-  document.activeElement instanceof HTMLTextAreaElement ||
-  (document.activeElement as HTMLElement | null)?.isContentEditable === true;
-
-/** Takes a node away through a transition and brings it back, then restores the toolbar effect. */
-async function playTransition(canvas: GpuCanvasInstance, node: HTMLElement, effect: Effect) {
+/**
+ * Takes a node away through a transition and brings it back, then puts back the toolbar effect
+ * as it is by then.
+ */
+async function playTransition(
+  canvas: GpuCanvasInstance,
+  node: HTMLElement,
+  effect: Effect,
+  toolbarEffect: () => DemoEffect | null,
+) {
   if (!(await animateEffect(canvas, node, effect, { duration: 900 }))) return;
   await new Promise((resolve) => setTimeout(resolve, 250));
   if (!(await animateEffect(canvas, node, effect, { from: 1, to: 0, duration: 900 }))) return;
-  const toolbar = parseEffect(new URLSearchParams(location.search).get('effect'));
+  const toolbar = toolbarEffect();
   if (toolbar) canvas.setEffect(node, DEMO_EFFECTS[toolbar].effect);
-}
-
-async function saveSnapshot(canvas: GpuCanvasInstance, node: HTMLElement) {
-  const image = await canvas.snapshot(node, { scale: 2 }).catch(() => null);
-  if (!image) return;
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(await toBlob(image));
-  link.download = 'screen.png';
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
 function App() {
@@ -227,33 +195,28 @@ function App() {
   const [dark, setDark] = useState(readTheme);
   const [results, setResults] = useState(loadResults);
   const [benchProgress, setBenchProgress] = useState<number | null>(null);
-  const [effect, setEffect] = useState(INITIAL_EFFECT);
-  const [edit, setEdit] = useState(INITIAL_EDIT);
-  const [pick, setPick] = useState(INITIAL_PICK);
-  const [agentsOn, setAgentsOn] = useState(INITIAL_AGENTS);
+  const [effect, setEffect] = useState(initial.effect);
+  const [edit, setEdit] = useState(initial.edit);
+  const [pick, setPick] = useState(initial.pick);
+  const [agentsOn, setAgentsOn] = useState(initial.agents);
   const progressive = useProgressiveMount(CLUSTERS.length, canvas !== null);
   const { mountMs } = progressive;
   const mountedNodes = MOUNTED_NODES[progressive.mounted];
+  const effectRef = useRef(effect);
+  effectRef.current = effect;
 
   const bench = useCallback(async () => {
     if (!canvas || mountMs === null || benchProgress !== null) return;
     setBenchProgress(0);
+    const ranWith = effectRef.current;
     const result = await runBench(canvas, BOUNDS, SHOWCASE, mountMs, (t) => setBenchProgress(t));
-    if (effect) result.effect = effect;
-    window.benchResult = result;
-    console.log('[gpucanvas bench]', JSON.stringify(result));
-    setResults(saveResult(result));
+    setResults(finishBench(result, ranWith));
     setBenchProgress(null);
-  }, [canvas, mountMs, benchProgress, effect]);
+  }, [canvas, mountMs, benchProgress]);
 
   const toggleTheme = useCallback(() => {
     const next = !dark;
-    document.documentElement.classList.toggle('dark', next);
-    try {
-      localStorage.setItem(THEME_KEY, next ? 'dark' : 'light');
-    } catch {
-      // The theme just won't persist.
-    }
+    saveTheme(next);
     setDark(next);
     canvas?.setBackground(backgroundColor());
     canvas?.invalidate();
@@ -263,18 +226,15 @@ function App() {
     if (canvas) canvas.setCamera(overview(canvas));
   }, [canvas]);
 
-  const effectRef = useRef(effect);
-  effectRef.current = effect;
   const latest = useRef({ bench, toggleTheme, fit });
   latest.current = { bench, toggleTheme, fit };
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if ((event.target as HTMLElement).closest('input, textarea, [role="listbox"]')) return;
-      if (event.key === 'f') latest.current.fit();
-      if (event.key === 'b') latest.current.bench();
-      if (event.key === 't') latest.current.toggleTheme();
-    };
+    const onKey = (event: KeyboardEvent) =>
+      handleShortcut(event, {
+        fit: () => latest.current.fit(),
+        bench: () => latest.current.bench(),
+        theme: () => latest.current.toggleTheme(),
+      });
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -309,23 +269,15 @@ function App() {
       if (cancelled) return;
       revealed.current = true;
       window.mountMs = mountMs;
-      if (params.has('bench')) latest.current.bench();
+      if (initial.bench) latest.current.bench();
     });
     return () => {
       cancelled = true;
     };
   }, [canvas, mountMs, agents, agentsOn]);
 
-  // The URL keeps the toolbar settings across reloads and mode switches.
   useEffect(() => {
-    const next = new URLSearchParams(location.search);
-    const set = (key: string, value: string | null) =>
-      value === null ? next.delete(key) : next.set(key, value);
-    set('effect', effect);
-    set('edit', edit ? null : '0');
-    set('pick', pick === 'component' ? null : pick);
-    set('agents', agentsOn ? null : '0');
-    history.replaceState(null, '', `?${next}`);
+    rememberToolbar({ effect, edit, pick, agents: agentsOn });
   }, [effect, edit, pick, agentsOn]);
 
   // Every component wears the effect once all have mounted.
@@ -343,16 +295,20 @@ function App() {
       trigger: edit ? 'click' : 'shift-click',
       onTransform: edit ? (event) => applyTransform(canvas, event) : undefined,
     });
-    // S saves the selected screen as a PNG. D dissolves it out and back in, W wipes it.
-    const onKey = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || isTyping()) return;
+    const onSelected = (run: (node: HTMLElement) => void) => () => {
       const first = editor.get()[0]?.[0];
       const node = first && canvas.getNodeOf(first);
-      if (!node) return;
-      if (event.key === 's') saveSnapshot(canvas, node);
-      if (event.key === 'd') playTransition(canvas, node, effects.dissolve);
-      if (event.key === 'w') playTransition(canvas, node, effects.wipe);
+      if (node) run(node);
     };
+    const toolbarEffect = () => effectRef.current;
+    const onKey = (event: KeyboardEvent) =>
+      handleShortcut(event, {
+        snapshot: onSelected((node) => saveSnapshot(canvas, node)),
+        dissolve: onSelected((node) =>
+          playTransition(canvas, node, effects.dissolve, toolbarEffect),
+        ),
+        wipe: onSelected((node) => playTransition(canvas, node, effects.wipe, toolbarEffect)),
+      });
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
@@ -360,52 +316,19 @@ function App() {
     };
   }, [canvas, edit, pick]);
 
-  // Back, Continue and the like move the camera to the neighboring screen in the same row.
   useEffect(() => {
-    if (!canvas) return;
-    const onFlow = (event: Event) => {
-      const from = canvas.getNodeOf(event.target as Element);
-      const rect = from && canvas.getNodeRect(from);
-      if (!rect) return;
-      const step = (event as CustomEvent<number>).detail;
-      const row = rect.y + rect.height / 2;
-      const search = {
-        x: step > 0 ? rect.x + rect.width : rect.x - rect.width * 3,
-        y: rect.y - rect.height,
-        width: rect.width * 3,
-        height: rect.height * 3,
-      };
-      let next: typeof rect | null = null;
-      for (const node of canvas.getNodesIn(search)) {
-        const r = canvas.getNodeRect(node);
-        if (!r || node === from || !node.querySelector('.brand')) continue;
-        if (Math.abs(r.y + r.height / 2 - row) > rect.height / 2) continue;
-        if (
-          (r.x - rect.x) * step > 0 &&
-          (!next || Math.abs(r.x - rect.x) < Math.abs(next.x - rect.x))
-        )
-          next = r;
-      }
-      if (!next)
-        return void toast(event.target!, step > 0 ? 'Last screen in this flow' : 'First screen');
-      const { zoom } = canvas.getCamera();
-      const { clientWidth: w, clientHeight: h } = canvas.surface;
-      flyTo(canvas, centeredOn(next.x + next.width / 2, next.y + next.height / 2, zoom, w, h), 700);
-    };
-    document.addEventListener(FLOW_EVENT, onFlow);
-    return () => document.removeEventListener(FLOW_EVENT, onFlow);
+    if (canvas) return followFlows(canvas);
   }, [canvas]);
 
   useEffect(() => {
     if (!canvas || mountMs === null) return;
     window.stage = canvas;
-    window.runBench = () =>
-      runBench(canvas, BOUNDS, SHOWCASE, mountMs).then((result) => {
-        if (effectRef.current) result.effect = effectRef.current;
-        window.benchResult = result;
-        setResults(saveResult(result));
-        return result;
-      });
+    window.runBench = async () => {
+      const ranWith = effectRef.current;
+      const result = await runBench(canvas, BOUNDS, SHOWCASE, mountMs);
+      setResults(finishBench(result, ranWith));
+      return result;
+    };
   }, [canvas, mountMs]);
 
   return (
@@ -436,7 +359,7 @@ function App() {
           <ClusterNodes key={index} id={index} cluster={cluster} blank={INTRO} />
         ))}
       </GpuCanvas>
-      {HUD && (
+      {initial.hud && (
         <>
           <Toolbar
             mode={MODE}
@@ -445,8 +368,8 @@ function App() {
             benchProgress={benchProgress}
             dark={dark}
             canBench={canvas !== null && mountMs !== null}
-            onMode={(mode) => navigate({ mode })}
-            onNodes={(n) => navigate({ n: String(n) })}
+            onMode={(mode) => reloadWith({ mode })}
+            onNodes={(n) => reloadWith({ n })}
             effect={effect}
             onEffect={setEffect}
             edit={edit}

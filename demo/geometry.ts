@@ -19,3 +19,19 @@ export const union = (rects: Rect[]): Rect => {
     height: Math.max(...rects.map((r) => r.y + r.height)) - y,
   };
 };
+
+/**
+ * Where `element` sits in the world, from its box inside canvas node `node`, which sits at
+ * `rect`: measured on screen, so it holds at any zoom and in either engine.
+ */
+export const worldRectOf = (node: Element, rect: Rect, element: Element): Rect => {
+  const box = node.getBoundingClientRect();
+  const r = element.getBoundingClientRect();
+  const scale = rect.width / (box.width || 1);
+  return {
+    x: rect.x + (r.x - box.x) * scale,
+    y: rect.y + (r.y - box.y) * scale,
+    width: r.width * scale,
+    height: r.height * scale,
+  };
+};

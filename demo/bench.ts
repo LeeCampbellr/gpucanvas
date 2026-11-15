@@ -1,14 +1,21 @@
 import {
   easeInOut,
   fitCamera,
+  worldToScreen,
   type Camera,
   type GpuCanvas,
   type GpuCanvasMode,
+  type Point,
   type Rect,
 } from '../src/index';
-import { center } from './geometry';
+import { center, worldRectOf } from './geometry';
 import { centeredOn, lerpCamera } from './fly';
+import { nodeClass } from './playground';
+import type { ScreenRef } from './screens';
 import { createMarquee } from '../src/editor';
+
+/** A frame longer than this counts as jank. */
+export const JANK_MS = 20;
 
 export interface BenchResult {
   mode: GpuCanvasMode;
@@ -17,7 +24,7 @@ export interface BenchResult {
   avgFps: number;
   p50Ms: number;
   p95Ms: number;
-  /** Share of frames that took longer than 20 ms, in percent. */
+  /** Share of frames that took longer than `JANK_MS`, in percent. */
   jankPercent: number;
   /** Milliseconds from the first cluster to the last one mounted. */
   mountMs: number;
@@ -36,11 +43,11 @@ interface BenchEvent {
   text?: string;
 }
 
-/** A cluster as the bench needs it: its bounds, its items' rects and its index in the playground. */
+/** A cluster as the bench needs it: its bounds, its items and its index in the playground. */
 interface BenchCluster {
   id: number;
   bounds: Rect;
-  items: { rect: Rect; name?: string }[];
+  items: { rect: Rect; screen?: ScreenRef }[];
 }
 
 const distance = (a: Rect, b: Rect) => {
@@ -48,9 +55,6 @@ const distance = (a: Rect, b: Rect) => {
   const q = center(b);
   return Math.hypot(p.x - q.x, p.y - q.y);
 };
-
-/** The canvas node that holds item `index` of cluster `id`, in either engine. */
-export const nodeClass = (id: number, index: number) => `node-${id}-${index}`;
 
 /**
  * Steps of the bench session. A step eases the camera to `to` over `ms` (or holds when `to` is
@@ -73,14 +77,14 @@ const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 
 interface Stop {
   /** Where on the canvas, as a fraction of its width and height. */
   at: [number, number];
-  screen: RegExp;
+  screen: ScreenRef;
   /** How close to get: the screen fills the view up to this zoom. */
   zoom: number;
   /** How the camera gets there: straight in, across at altitude, or out to everything first. */
   route: 'dive' | 'across' | 'overview';
   actions: (Action | Typing | Wait)[];
 }
-/** A click on the control whose label, accessible name or `data-act` starts with `press`. */
+/** A click on the control whose label or accessible name starts with `press`. */
 interface Action {
   press: string;
   times?: number;
@@ -103,7 +107,7 @@ const TOUR: Stop[] = [
   {
     // Typing: every keystroke re-renders a live input, and the GPU redraws it.
     at: [0.15, 0.2],
-    screen: /^\w+ \/ Web \/ Messages$/,
+    screen: { kind: 'desktop', layout: 'Messages' },
     zoom: 1.1,
     route: 'dive',
     actions: [
@@ -115,7 +119,7 @@ const TOUR: Stop[] = [
   {
     // The longest flight, then charts that animate frame by frame.
     at: [0.85, 0.75],
-    screen: /^\w+ \/ Web \/ Dashboard$/,
+    screen: { kind: 'desktop', layout: 'Dashboard' },
     zoom: 1.1,
     route: 'across',
     actions: [{ press: '12 months' }, { wait: 500 }, { press: '7 days' }, { wait: 500 }],
@@ -123,7 +127,7 @@ const TOUR: Stop[] = [
   {
     // Out to all of them and back in, then a push to 500% on the last click.
     at: [0.6, 0.9],
-    screen: /^\w+ \/ iOS \/ Booking$/,
+    screen: { kind: 'phone', layout: 'Booking' },
     zoom: 2,
     route: 'overview',
     actions: [{ press: '28', times: 2 }, { press: '14:00' }],
@@ -151,25 +155,12 @@ function session(
   };
   const node = (c: BenchCluster, i: number) =>
     document.querySelector<HTMLElement>(`.${nodeClass(c.id, i)}`);
-  /** Where `element` sits in the world, from its offset inside its node at any zoom. */
-  const worldPoint = (c: BenchCluster, i: number, element: Element) => {
-    const box = node(c, i)!.getBoundingClientRect();
-    const r = element.getBoundingClientRect();
-    const scale = c.items[i].rect.width / box.width;
-    return {
-      x: c.items[i].rect.x + (r.x + r.width / 2 - box.x) * scale,
-      y: c.items[i].rect.y + (r.y + r.height / 2 - box.y) * scale,
-    };
-  };
-  const toScreen = (p: { x: number; y: number }) => {
-    const cam = canvas.getCamera();
-    return { x: (p.x - cam.x) * cam.zoom, y: (p.y - cam.y) * cam.zoom };
-  };
+  /** The middle of `element`, which sits in item `i`, in the world. */
+  const worldPoint = (c: BenchCluster, i: number, element: Element) =>
+    center(worldRectOf(node(c, i)!, c.items[i].rect, element));
+  const toScreen = (p: Point) => worldToScreen(canvas.getCamera(), p);
   const label = (e: HTMLElement) =>
-    (e.dataset.act || e.textContent?.trim() || e.getAttribute('aria-label') || '').replace(
-      /\s+/g,
-      ' ',
-    );
+    (e.textContent?.trim() || e.getAttribute('aria-label') || '').replace(/\s+/g, ' ');
   /** The control in item `i` whose label starts with `text`; a label's own input stands for it. */
   const control = (c: BenchCluster, i: number, text: string) => {
     const all = node(c, i)?.querySelectorAll<HTMLElement>(
@@ -204,7 +195,12 @@ function session(
       height: 0,
     };
     const candidates = clusters
-      .map((c) => ({ c, i: c.items.findIndex((item) => stop.screen.test(item.name ?? '')) }))
+      .map((c) => ({
+        c,
+        i: c.items.findIndex(
+          ({ screen }) => screen?.kind === stop.screen.kind && screen.layout === stop.screen.layout,
+        ),
+      }))
       .filter(({ i }) => i >= 0)
       .sort((a, b) => distance(a.c.bounds, point) - distance(b.c.bounds, point));
     if (!candidates.length) continue;
@@ -270,7 +266,7 @@ function session(
     const area = (rect: Rect) => rect.width * rect.height;
     const picks = c.items
       .map((item, i) => ({ item, i }))
-      .filter(({ item }) => item.name)
+      .filter(({ item }) => item.screen)
       .sort((a, b) => area(b.item.rect) - area(a.item.rect))
       .slice(0, 3)
       .sort((a, b) => a.item.rect.x - b.item.rect.x);
@@ -393,9 +389,10 @@ export function runBench(
         avgFps: Math.round((sorted.length / sum) * 1000),
         p50Ms: +sorted[Math.floor(sorted.length * 0.5)].toFixed(1),
         p95Ms: +sorted[Math.floor(sorted.length * 0.95)].toFixed(1),
-        jankPercent: +((sorted.filter((value) => value > 20).length / sorted.length) * 100).toFixed(
-          1,
-        ),
+        jankPercent: +(
+          (sorted.filter((value) => value > JANK_MS).length / sorted.length) *
+          100
+        ).toFixed(1),
         mountMs: Math.round(mountMs),
         at: Date.now(),
         log,
@@ -429,4 +426,15 @@ export function saveResult(result: BenchResult) {
     // Private windows can refuse storage; the result still shows until reload.
   }
   return results;
+}
+
+/**
+ * Keeps a finished run: tagged with the effect it ran under, on `window.benchResult` and in the
+ * console for scripts, and in storage. Returns every kept result.
+ */
+export function finishBench(result: BenchResult, effect: string | null) {
+  if (effect) result.effect = effect;
+  window.benchResult = result;
+  console.log('[gpucanvas bench]', JSON.stringify(result));
+  return saveResult(result);
 }
