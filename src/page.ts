@@ -1,3 +1,4 @@
+import type { AtlasSlot } from './atlas';
 import { Shelves } from './shelves';
 
 /**
@@ -27,6 +28,8 @@ export class Page {
   promotedFrame = -1;
   /** Registered for hit testing with `updateElementGeometry`. */
   registered = false;
+  /** The atlas slot of the page's last whole snapshot, reused when it is drawn again that size. */
+  wholeSlot: AtlasSlot | null = null;
   private readonly shelves: Shelves;
 
   constructor(width: number, height: number) {
