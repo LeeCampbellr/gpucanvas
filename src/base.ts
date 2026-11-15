@@ -65,6 +65,7 @@ export function createBase<N extends BaseNode>(
   const api = {
     surface,
     addNode(element, rect) {
+      if (nodes.has(element)) return api.updateNode(element, rect);
       styleNode(element);
       nodes.set(element, hooks.add(element, rect));
     },

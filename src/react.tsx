@@ -45,14 +45,15 @@ export function GpuCanvas({ children, className, style, onReady, ...options }: G
       ...latest.current.options,
       // The callback from the latest render, not the first.
       onCameraChange: (camera) => latest.current.options.onCameraChange?.(camera),
-    })
-      .then((instance) => {
+    }).then(
+      (instance) => {
         if (disposed) return instance.destroy();
         created = instance;
         setCanvas(instance);
         latest.current.onReady?.(instance);
-      })
-      .catch((error) => console.error('gpucanvas: the canvas failed to start', error));
+      },
+      (error) => console.error('gpucanvas: the canvas failed to start', error),
+    );
     return () => {
       disposed = true;
       created?.destroy();
@@ -61,9 +62,13 @@ export function GpuCanvas({ children, className, style, onReady, ...options }: G
     // The mode and GPU resources are fixed for the canvas's lifetime; remount to change them.
   }, []);
 
+  // The canvas starts with the first background; later changes to the prop are applied.
   const { background } = options;
+  const shownBackground = useRef(background);
   useEffect(() => {
-    if (canvas && background !== undefined) canvas.setBackground(background);
+    if (!canvas || background === undefined || background === shownBackground.current) return;
+    shownBackground.current = background;
+    canvas.setBackground(background);
   }, [canvas, background]);
 
   return (

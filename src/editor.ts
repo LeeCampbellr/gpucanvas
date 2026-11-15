@@ -186,7 +186,9 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
   let keepFocus = false;
 
   const commit = (next: Layer[], nextScopes: Layer[] = scopes) => {
-    selection = next.filter((layer, i) => next.findIndex((other) => sameLayer(layer, other)) === i);
+    const seen = new Set<Element>();
+    // A layer is known by its first element, as `sameLayer` compares them.
+    selection = next.filter((layer) => !seen.has(layer[0]) && !!seen.add(layer[0]));
     scopes = selection.length ? nextScopes : [];
     canvas.setSelection(selection.flat());
     onChange?.(selection);

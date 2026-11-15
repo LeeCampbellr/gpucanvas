@@ -124,6 +124,7 @@ export async function createGpuCanvas(
         ringRects.clear();
         if (node.rect.width === rect.width && node.rect.height === rect.height) {
           translateNode(node, rect);
+          live.moved(node);
           return schedule();
         }
         // A new size needs a new spot on a page, and new pixels.
@@ -271,7 +272,7 @@ export async function createGpuCanvas(
     frameNumber: () => frameNumber,
     canvasDpr,
     schedule,
-    captured,
+    isPinned,
     onPress: () => {
       if (effects.size) schedule();
     },
@@ -279,7 +280,7 @@ export async function createGpuCanvas(
 
   /**
    * Moves a node to another page with `move`. The page it left is released from hit testing and
-   * parked unless something else holds it. Returns whether the node was live.
+   * parked unless something else holds it. The pointer did not move, so a live node is live again.
    */
   const relocate = (node: GpuNode, move: () => void) => {
     const wasLive = live.current === node;
@@ -290,16 +291,13 @@ export async function createGpuCanvas(
       live.unpin(previous);
       previous.setDrawable(false, frameNumber);
     }
-    return wasLive;
+    if (wasLive) live.pick();
   };
   /**
    * Moves a node onto a page of its own, so deep zooms rasterize only it. Its whole snapshot
-   * stays valid: the pixels did not change, only the page. The pointer did not move either, so
-   * a live node is live again.
+   * stays valid: the pixels did not change, only the page.
    */
-  const lift = (node: GpuNode) => {
-    if (relocate(node, () => pages.lift(node))) live.pick();
-  };
+  const lift = (node: GpuNode) => relocate(node, () => pages.lift(node));
   const planner: Planner = new Planner(atlas, lift, schedule);
 
   const composite = () => {

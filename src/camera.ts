@@ -38,11 +38,7 @@ export function zoomAt(camera: Camera, screenX: number, screenY: number, factor:
   return { x: worldX - screenX / zoom, y: worldY - screenY / zoom, zoom };
 }
 
-export function visibleWorldRect(
-  camera: Camera,
-  viewportWidth: number,
-  viewportHeight: number,
-): Rect {
+function visibleWorldRect(camera: Camera, viewportWidth: number, viewportHeight: number): Rect {
   return {
     x: camera.x,
     y: camera.y,

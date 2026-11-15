@@ -139,6 +139,8 @@ export function placeNode(node: GpuNode, at: PageSlot) {
   node.pageY = at.y;
   node.slot = null;
   node.thumb = null;
+  node.tiles = [];
+  node.preview = null;
   node.solo = false;
   node.dirty = true;
 }

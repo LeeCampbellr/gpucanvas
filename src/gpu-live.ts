@@ -34,8 +34,8 @@ export interface LiveOptions {
   /** Canvas pixels per CSS pixel. */
   canvasDpr: () => number;
   schedule: () => void;
-  /** Whether a snapshot waiting to be captured keeps a page drawable. */
-  captured: (page: Page) => boolean;
+  /** Whether anything keeps a page drawable: held nodes, waiting snapshots. */
+  isPinned: (page: Page) => boolean;
   /** Runs on every press. */
   onPress: () => void;
 }
@@ -101,6 +101,11 @@ export class Live {
     const { canvas, frameNumber, schedule } = this.o;
     const previous = this.current;
     this.current = node;
+    // Back before it was let go: it is held again, not redrawn as it rests.
+    if (node && node === this.lingering) {
+      clearTimeout(this.lingerTimer);
+      this.lingering = null;
+    }
     if (previous) {
       previous.element.style.pointerEvents = 'none';
       clearTimeout(this.lingerTimer);
@@ -167,9 +172,16 @@ export class Live {
     }
   }
 
+  /** Puts the hit area back under `node` after it moved, when it is the live node. */
+  moved(node: GpuNode) {
+    if (node !== this.current) return;
+    this.positioned = false;
+    this.position();
+  }
+
   /** Releases a page from hit testing once nothing pins it; it parks after its next raster. */
   unpin(page: Page) {
-    if (this.o.captured(page) || this.holds(page)) return;
+    if (this.o.isPinned(page)) return;
     if (page.registered) this.o.canvas.clearElementGeometry(page.element);
     page.registered = false;
     page.element.style.transform = '';
