@@ -10,17 +10,30 @@ export interface BaseNode {
 }
 
 /** Styles every node gets: containment keeps one node's changes from relaying out the others. */
-export const styleNode = (element: HTMLElement) =>
+const styleNode = (element: HTMLElement) =>
   Object.assign(element.style, { boxSizing: 'border-box', contain: 'strict', overflow: 'hidden' });
+
+/** How a backend shows a node: called once the base has checked the element. */
+export interface NodeHooks<N extends BaseNode> {
+  /** Shows a new node; `element` already has the node styles. */
+  add(element: HTMLElement, rect: Rect): N;
+  /** Moves or resizes a node; `node.rect` still holds its old rect. */
+  update(node: N, rect: Rect): void;
+  /** Stops showing a node, before the base forgets it and removes its element. */
+  remove(node: N): void;
+}
 
 /**
  * What both backends share: the surface in `host`, the nodes and where they sit, and the camera
  * with its input. `onCamera` runs on every camera change, before `options.onCameraChange`.
+ * Adding, updating and removing nodes goes through the base, which keeps the node map and calls
+ * the backend's `hooks`.
  */
 export function createBase<N extends BaseNode>(
   host: HTMLElement,
   options: GpuCanvasOptions,
   onCamera: (camera: Camera) => void,
+  hooks: NodeHooks<N>,
 ) {
   const surface = document.createElement('div');
   markSurface(surface);
@@ -51,6 +64,21 @@ export function createBase<N extends BaseNode>(
 
   const api = {
     surface,
+    addNode(element, rect) {
+      styleNode(element);
+      nodes.set(element, hooks.add(element, rect));
+    },
+    updateNode(element, rect) {
+      const node = nodes.get(element);
+      if (node) hooks.update(node, rect);
+    },
+    removeNode(element) {
+      const node = nodes.get(element);
+      if (!node) return;
+      hooks.remove(node);
+      nodes.delete(element);
+      element.remove();
+    },
     getNodeRect: (element) => {
       const node = nodes.get(element);
       return node ? { ...node.rect } : null;

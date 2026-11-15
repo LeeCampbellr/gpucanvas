@@ -1,4 +1,4 @@
-import { createBase, styleNode, type BaseNode } from './base';
+import { createBase, type BaseNode } from './base';
 import { markSurface } from './input';
 import type { Camera } from './camera';
 import { effectParams, type Effect } from './effects';
@@ -24,7 +24,30 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
     world.style.setProperty('--gpucanvas-zoom', String(camera.zoom));
     frameMs = performance.now() - start;
   };
-  const base = createBase<BaseNode>(host, options, apply);
+  const place = (element: HTMLElement, rect: Rect) => {
+    element.style.left = `${rect.x}px`;
+    element.style.top = `${rect.y}px`;
+    element.style.width = `${rect.width}px`;
+    element.style.height = `${rect.height}px`;
+  };
+  const base = createBase<BaseNode>(host, options, apply, {
+    add(element, rect) {
+      element.style.position = 'absolute';
+      place(element, rect);
+      world.append(element);
+      return { element, rect };
+    },
+    update(node, rect) {
+      node.rect = rect;
+      place(node.element, rect);
+    },
+    remove({ element }) {
+      clearEffect(element);
+      selection.delete(element);
+      outlinedNodes.delete(element);
+      element.style.outline = '';
+    },
+  });
   const { surface, nodes } = base;
   surface.style.background = options.background ?? 'transparent';
   const world = document.createElement('div');
@@ -131,33 +154,11 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
       element.animate(keyframes, { duration: period * 1000, iterations: Infinity }),
     );
   };
-  const updateNode = (element: HTMLElement, rect: Rect) => {
-    nodes.set(element, { element, rect });
-    element.style.left = `${rect.x}px`;
-    element.style.top = `${rect.y}px`;
-    element.style.width = `${rect.width}px`;
-    element.style.height = `${rect.height}px`;
-  };
   apply(base.camera());
 
   return {
     ...base.api,
     mode: 'dom',
-    addNode(element, rect) {
-      styleNode(element);
-      element.style.position = 'absolute';
-      updateNode(element, rect);
-      world.append(element);
-    },
-    updateNode,
-    removeNode(element) {
-      clearEffect(element);
-      nodes.delete(element);
-      selection.delete(element);
-      outlinedNodes.delete(element);
-      element.style.outline = '';
-      element.remove();
-    },
     getElementRect: elementRect,
     setSelection(elements) {
       selection = new Set(elements);

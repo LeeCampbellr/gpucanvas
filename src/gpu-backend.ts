@@ -1,5 +1,5 @@
 import { Atlas } from './atlas';
-import { createBase, styleNode } from './base';
+import { createBase } from './base';
 import { screenToWorld } from './camera';
 import { nodeOfElement, rectInNode } from './elements';
 import { effectPad, effectParams, type Effect } from './effects';
@@ -97,17 +97,50 @@ export async function createGpuCanvas(
     throw error;
   }
 
-  const base = createBase<GpuNode>(host, options, () => {
-    lastCameraChange = performance.now();
-    // A moving canvas has no hover; the node under a still pointer becomes live once it rests.
-    live.set(null);
-    clearTimeout(settleTimer);
-    settleTimer = window.setTimeout(() => {
-      live.pick();
+  const base = createBase<GpuNode>(
+    host,
+    options,
+    () => {
+      lastCameraChange = performance.now();
+      // A moving canvas has no hover; the node under a still pointer becomes live once it rests.
+      live.set(null);
+      clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        live.pick();
+        schedule();
+      }, SETTLE_MS);
       schedule();
-    }, SETTLE_MS);
-    schedule();
-  });
+    },
+    {
+      add(element, rect) {
+        element.style.pointerEvents = 'none';
+        const node = createGpuNode(element, rect, pages.place(element, rect));
+        pages.join(node);
+        schedule();
+        return node;
+      },
+      update(node, rect) {
+        const resized = node.rect.width !== rect.width || node.rect.height !== rect.height;
+        node.rect = rect;
+        ringRects.clear();
+        if (resized) {
+          relocate(node, () => {
+            pages.release(node);
+            placeNode(node, pages.place(node.element, rect));
+            pages.join(node);
+          });
+        }
+        schedule();
+      },
+      remove(node) {
+        live.forget(node);
+        effects.delete(node.element);
+        selection.delete(node.element);
+        pages.release(node);
+        schedule();
+      },
+    },
+  );
   const { surface, nodes } = base;
   surface.append(canvas);
 
@@ -458,40 +491,6 @@ export async function createGpuCanvas(
   return {
     ...base.api,
     mode: 'gpu',
-    addNode(element, rect) {
-      styleNode(element);
-      element.style.pointerEvents = 'none';
-      const node = createGpuNode(element, rect, pages.place(element, rect));
-      pages.join(node);
-      nodes.set(element, node);
-      schedule();
-    },
-    updateNode(element, rect) {
-      const node = nodes.get(element);
-      if (!node) return;
-      const resized = node.rect.width !== rect.width || node.rect.height !== rect.height;
-      node.rect = rect;
-      ringRects.clear();
-      if (resized) {
-        relocate(node, () => {
-          pages.release(node);
-          placeNode(node, pages.place(element, rect));
-          pages.join(node);
-        });
-      }
-      schedule();
-    },
-    removeNode(element) {
-      const node = nodes.get(element);
-      if (!node) return;
-      live.forget(node);
-      effects.delete(element);
-      selection.delete(element);
-      nodes.delete(element);
-      pages.release(node);
-      element.remove();
-      schedule();
-    },
     getElementRect(element) {
       const rect = ringRect(element);
       return rect ? { ...rect } : null;
