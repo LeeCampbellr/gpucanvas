@@ -1,5 +1,5 @@
 import { dissolve, type Effect } from './effects';
-import type { GpuCanvas } from './types';
+import type { GpuCanvas } from '../types';
 
 export type Easing = (t: number) => number;
 

@@ -1,16 +1,16 @@
-import { createBase, type BaseNode } from './base';
-import { markSurface } from './input';
-import type { Camera } from './camera';
-import { effectParams, type Effect } from './effects';
-import { nodeOfElement, rectInNode } from './elements';
-import { intersects, type Rect } from './rect';
+import { createBase, type BaseNode } from '../core/base';
+import { markSurface } from '../core/input';
+import type { Camera } from '../core/camera';
+import { effectParams, type Effect } from '../features/effects';
+import { nodeOfElement, rectInNode } from '../core/elements';
+import { intersects, type Rect } from '../core/rect';
 import {
   DEFAULT_SELECTION_COLOR,
   HOVER_WIDTH,
   SELECTION_WIDTH,
   type GpuCanvas,
   type GpuCanvasOptions,
-} from './types';
+} from '../types';
 
 /**
  * The fallback, and the way most infinite canvases work today: every node is absolutely

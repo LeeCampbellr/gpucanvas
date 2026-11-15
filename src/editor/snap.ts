@@ -1,4 +1,4 @@
-import type { Rect } from './rect';
+import type { Rect } from '../core/rect';
 
 /** A line drawn while something snaps, in world units. */
 export interface Guide {

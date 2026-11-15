@@ -1,6 +1,6 @@
-import { viewOf } from './camera';
-import { sameRect, type Rect } from './rect';
-import type { GpuCanvas } from './types';
+import { viewOf } from '../core/camera';
+import { sameRect, type Rect } from '../core/rect';
+import type { GpuCanvas } from '../types';
 
 /** One element as an agent reads it: what it is, what it says, and where it sits on the canvas. */
 export interface AgentElement {

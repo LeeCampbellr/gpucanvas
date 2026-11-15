@@ -1,9 +1,9 @@
 import { Atlas } from './atlas';
-import { createBase } from './base';
-import { screenToWorld } from './camera';
-import { nodeOfElement, rectInNode } from './elements';
-import { effectPad, effectParams, type Effect } from './effects';
-import { Live, FAR_AWAY } from './gpu-live';
+import { createBase } from '../core/base';
+import { screenToWorld } from '../core/camera';
+import { nodeOfElement, rectInNode } from '../core/elements';
+import { effectPad, effectParams, type Effect } from '../features/effects';
+import { Live, FAR_AWAY } from './live';
 import {
   createGpuNode,
   isCurrentTile,
@@ -12,21 +12,21 @@ import {
   translateNode,
   type GpuNode,
   type Tile,
-} from './gpu-node';
-import { Pages } from './gpu-pages';
-import { Planner } from './gpu-plan';
-import { Rasterizer, type Capture } from './gpu-raster';
-import { CompositeRenderer } from './gpu-renderer';
-import { markSurface } from './input';
+} from './node';
+import { Pages } from './pages';
+import { Planner } from './plan';
+import { Rasterizer, type Capture } from './raster';
+import { CompositeRenderer } from './renderer';
+import { markSurface } from '../core/input';
 import type { Page } from './page';
-import { intersects, type Rect } from './rect';
+import { intersects, type Rect } from '../core/rect';
 import {
   DEFAULT_SELECTION_COLOR,
   HOVER_WIDTH,
   SELECTION_WIDTH,
   type GpuCanvas,
   type GpuCanvasOptions,
-} from './types';
+} from '../types';
 
 /** How long the camera must rest before blurry snapshots are upgraded. */
 const SETTLE_MS = 120;

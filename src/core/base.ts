@@ -2,7 +2,7 @@ import { fitCamera, screenToWorld, viewOf, worldToScreen, type Camera } from './
 import { elementInNode, nodeOfElement } from './elements';
 import { bindCameraInput, markSurface } from './input';
 import { containsPoint, intersects, unionOf, type Point, type Rect } from './rect';
-import { DEFAULT_CAMERA, type GpuCanvas, type GpuCanvasOptions } from './types';
+import { DEFAULT_CAMERA, type GpuCanvas, type GpuCanvasOptions } from '../types';
 
 export interface BaseNode {
   element: HTMLElement;

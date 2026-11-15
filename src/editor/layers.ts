@@ -1,5 +1,5 @@
-import { intersects, sameRect, unionOf, type Point, type Rect } from './rect';
-import type { GpuCanvas } from './types';
+import { intersects, sameRect, unionOf, type Point, type Rect } from '../core/rect';
+import type { GpuCanvas } from '../types';
 
 /**
  * A layer is what one click selects: one element, or several that act as one, such as a React

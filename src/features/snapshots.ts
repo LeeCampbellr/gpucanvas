@@ -1,5 +1,5 @@
-import type { Rect } from './rect';
-import type { GpuCanvas } from './types';
+import type { Rect } from '../core/rect';
+import type { GpuCanvas } from '../types';
 
 /** A snapshot as an image file, PNG by default. */
 export function toBlob(image: ImageData, type = 'image/png', quality?: number): Promise<Blob> {

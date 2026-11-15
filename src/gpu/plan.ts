@@ -7,9 +7,9 @@ import {
   THUMBNAIL_SCALE,
   type GpuNode,
   type Tile,
-} from './gpu-node';
+} from './node';
 import type { Page } from './page';
-import { center, contains, intersection, intersects, type Rect } from './rect';
+import { center, contains, intersection, intersects, type Rect } from '../core/rect';
 
 /** A tile a zoomed-in node is missing, waiting to be drawn. */
 export interface TileJob {

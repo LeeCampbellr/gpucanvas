@@ -1,10 +1,10 @@
-import type { Camera } from './camera';
-import { screenToWorld } from './camera';
-import { elementInNode } from './elements';
-import { nodeOf, smallOnScreen, type GpuNode } from './gpu-node';
-import { pointIn } from './input';
+import type { Camera } from '../core/camera';
+import { screenToWorld } from '../core/camera';
+import { elementInNode } from '../core/elements';
+import { nodeOf, smallOnScreen, type GpuNode } from './node';
+import { pointIn } from '../core/input';
 import type { Page } from './page';
-import { intersects, type Point, type Rect } from './rect';
+import { intersects, type Point, type Rect } from '../core/rect';
 
 /** Events that use a node, and how long after one its transitions are followed frame by frame. */
 const USE_EVENTS = ['click', 'input', 'change', 'keydown'] as const;

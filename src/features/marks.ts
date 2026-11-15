@@ -1,6 +1,6 @@
-import { rectToScreen } from './camera';
-import type { Point, Rect } from './rect';
-import { DEFAULT_SELECTION_COLOR, SURFACE_Z, type GpuCanvas } from './types';
+import { rectToScreen } from '../core/camera';
+import type { Point, Rect } from '../core/rect';
+import { DEFAULT_SELECTION_COLOR, SURFACE_Z, type GpuCanvas } from '../types';
 
 /** Something drawn above the nodes. `remove` takes it off the canvas. */
 export interface Mark {

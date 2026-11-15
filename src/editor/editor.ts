@@ -1,10 +1,10 @@
-import { rectToScreen, screenToWorld, viewOf } from './camera';
-import { pointIn } from './input';
+import { rectToScreen, screenToWorld, viewOf } from '../core/camera';
+import { pointIn } from '../core/input';
 import { createLayers, layerIn, layerRect, sameLayer, type EditorPick, type Layer } from './layers';
 import { createOverlay, guideRect, HANDLE_ANCHORS, handleAt, type Handle } from './overlay';
-import { unionOf, type Point, type Rect } from './rect';
+import { unionOf, type Point, type Rect } from '../core/rect';
 import { snapRect, type Guide } from './snap';
-import { DEFAULT_SELECTION_COLOR, SURFACE_Z, type GpuCanvas } from './types';
+import { DEFAULT_SELECTION_COLOR, SURFACE_Z, type GpuCanvas } from '../types';
 
 export interface TransformEvent {
   phase: 'start' | 'move' | 'end' | 'cancel';

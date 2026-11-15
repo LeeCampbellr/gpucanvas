@@ -6,23 +6,26 @@ rules in short form.
 
 ## What this is
 
-A library that puts live DOM nodes on an infinite canvas. Two backends share one API:
+A library that puts live DOM nodes on an infinite canvas. Two backends share one API. `src/`:
 
-- **GPU**: WebGPU draws the nodes through Chrome's HTML-in-Canvas
-  (`drawElementImageToTexture`).
-  - `src/gpu-backend.ts`: setup, the frame loop, compositing, the public methods
-  - `gpu-plan.ts`: which visible nodes need pixels each frame
-  - `gpu-raster.ts`: snapshots, tiles and captures into the atlas
-  - `gpu-live.ts`: the node under the pointer, hit testing, pointer and focus
-  - `gpu-pages.ts` and `page.ts`: the drawable pages nodes sit on
-  - `gpu-node.ts`: the node type shared by those files
-  - `gpu-renderer.ts`, `composite-shader.ts`, `atlas.ts`: the GPU draw itself
-- **DOM** (`src/dom-backend.ts`): the same nodes as plain positioned DOM, for every other browser.
-
-Both start from `src/base.ts` (surface, nodes, camera, input, queries). Shared math lives in
-`rect.ts` and `camera.ts`. On top: `editor.ts`, `snap.ts`, `layers.ts`, `effects.ts`,
-`transitions.ts`, `snapshots.ts`, `marks.ts`, `agent.ts`, and the React adapter `react.tsx`.
-Public exports are only what `src/index.ts` and `src/react.tsx` export.
+- `index.ts`, `react.tsx`: the public entry points; public exports are only what these export.
+  `types.ts` holds the public types.
+- `core/`: what both backends start from. `base.ts` (surface, nodes, camera, input, queries),
+  `camera.ts` and `rect.ts` (shared math), `input.ts` (pointer and wheel), `elements.ts`
+  (elements inside nodes).
+- `gpu/`: WebGPU draws the nodes through Chrome's HTML-in-Canvas (`drawElementImageToTexture`).
+  - `backend.ts`: setup, the frame loop, compositing, the public methods
+  - `plan.ts`: which visible nodes need pixels each frame
+  - `raster.ts` and `capture.ts`: snapshots, tiles and captures into the atlas
+  - `live.ts`: the node under the pointer, hit testing, pointer and focus
+  - `pages.ts` and `page.ts`: the drawable pages nodes sit on; `shelves.ts` packs them and the atlas
+  - `node.ts`: the node type shared by those files
+  - `renderer.ts`, `composite-shader.ts`, `atlas.ts`: the GPU draw itself
+- `dom/backend.ts`: the same nodes as plain positioned DOM, for every other browser.
+- `editor/`: selection, move and resize (`editor.ts`), its chrome (`overlay.ts`), snapping and
+  layers.
+- `features/`: effects, transitions, snapshots, marks and the agent view, on top of either
+  backend.
 
 `demo/` is the site at https://berkantay.github.io/gpucanvas and is not published to npm. Its
 mock screens live in `demo/screens/` (one file per screen, `desktop/` and `phone/`), and its

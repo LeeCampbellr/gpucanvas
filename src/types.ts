@@ -1,6 +1,6 @@
-import type { Camera } from './camera';
-import type { Point, Rect } from './rect';
-import type { Effect } from './effects';
+import type { Camera } from './core/camera';
+import type { Point, Rect } from './core/rect';
+import type { Effect } from './features/effects';
 
 export type GpuCanvasMode = 'gpu' | 'dom';
 
