@@ -1,6 +1,7 @@
 # Contributing to gpucanvas
 
 Thanks for helping. Bug reports, fixes, docs and new ideas are all welcome.
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Before you start
 
