@@ -68,6 +68,8 @@ export class Pages {
     else target.append(node.element);
     node.element.style.left = '0px';
     node.element.style.top = '0px';
+    node.element.style.width = `${node.rect.width}px`;
+    node.element.style.height = `${node.rect.height}px`;
     this.release(node);
     node.page = page;
     node.pageX = 0;

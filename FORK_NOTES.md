@@ -27,3 +27,7 @@ The pinned Git dependency uses pnpm, matching its consuming toolchain rather tha
 requiring Bun to prepare the dependency.
 Git consumers build the package via `prepare`; generated `dist` is not committed.
 These changes were implemented with assistance from OpenAI GPT-6.1 Sol.
+
+Retained nodes resize directly between drawable pages using state-preserving moves;
+resizing must not blur an input or lose its current value. The browser fixture checks
+this alongside ordering, focus return, cross-page Tab, animation, idle and release.

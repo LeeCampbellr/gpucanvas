@@ -79,6 +79,12 @@ try {
     });
     await expect(input).toBeFocused();
     await expect(input).toHaveValue('Retained input');
+    await page.evaluate(() => {
+      const { canvas, a, first } = window.fixture;
+      canvas.updateNode(a, { ...first, width: 360, height: 280 });
+    });
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue('Retained input');
     await page.locator('#increment').click();
     assert.equal(await page.evaluate(() => window.fixture.clicks()), 2);
     await page.evaluate(() => window.fixture.canvas.setCamera({ x: 30, y: 20, zoom: 0.5 }));
@@ -125,6 +131,7 @@ try {
         mode,
         nativeClicks: true,
         focusRestore: true,
+        resizeFocus: true,
         crossPageTab: true,
         orderedHitTesting: true,
         cameraGeometry: true,

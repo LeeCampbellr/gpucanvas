@@ -128,18 +128,23 @@ export async function createGpuCanvas(
           live.moved(node);
           return schedule();
         }
-        // A new size needs a new spot on a page, and new pixels.
+        // A retained node moves directly between drawable pages so resizing cannot blur it.
         node.rect = rect;
+        if (live.retains(node)) {
+          relocate(node, () => {
+            pages.lift(node);
+            placeNode(node, { page: node.page, x: 0, y: 0 });
+            node.solo = true;
+          });
+          node.page.setDrawable(true, frameNumber);
+          live.reorder();
+          return schedule();
+        }
         relocate(node, () => {
           pages.release(node);
           placeNode(node, pages.place(node.element, rect));
           pages.join(node);
         });
-        if (live.retains(node)) {
-          lift(node);
-          node.page.setDrawable(true, frameNumber);
-          live.moved(node);
-        }
         schedule();
       },
       order() {
