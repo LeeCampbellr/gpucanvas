@@ -259,15 +259,9 @@ export async function createGpuCanvas(
   /** Canvas pixels per CSS pixel. */
   const canvasDpr = () => canvas.width / Math.max(1, canvas.clientWidth);
   const resizeObserver = new ResizeObserver(([entry]) => {
-    const size = entry.devicePixelContentBoxSize?.[0];
-    canvas.width = Math.max(
-      1,
-      size ? size.inlineSize : Math.round(entry.contentRect.width * devicePixelRatio),
-    );
-    canvas.height = Math.max(
-      1,
-      size ? size.blockSize : Math.round(entry.contentRect.height * devicePixelRatio),
-    );
+    // Chrome's device-pixel box ignores emulated DPR; use the same pixel ratio as raster planning.
+    canvas.width = Math.max(1, Math.round(entry.contentRect.width * devicePixelRatio));
+    canvas.height = Math.max(1, Math.round(entry.contentRect.height * devicePixelRatio));
     schedule();
   });
   resizeObserver.observe(canvas, { box: 'device-pixel-content-box' });

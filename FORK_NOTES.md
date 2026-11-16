@@ -31,3 +31,8 @@ These changes were implemented with assistance from OpenAI GPT-6.1 Sol.
 Retained nodes resize directly between drawable pages using state-preserving moves;
 resizing must not blur an input or lose its current value. The browser fixture checks
 this alongside ordering, focus return, cross-page Tab, animation, idle and release.
+
+GPU backing-store dimensions follow CSS size × reported devicePixelRatio, matching
+raster planning. Chrome's device-pixel-content-box ignores emulated DPR; relying on
+it rendered 1× output in a 2× context. The browser fixture asserts backing-store
+size before and after viewport resize so performance comparisons use equal density.

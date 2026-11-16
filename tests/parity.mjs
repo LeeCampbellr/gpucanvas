@@ -61,6 +61,14 @@ try {
         window.fixture?.canvas.getStats().visible === 2 &&
         window.fixture.canvas.getStats().pending === 0,
     );
+    if (mode === 'gpu') {
+      await expect(page.locator('canvas')).toHaveJSProperty('width', 2000);
+      await expect(page.locator('canvas')).toHaveJSProperty('height', 1400);
+      await page.setViewportSize({ width: 900, height: 650 });
+      await expect(page.locator('canvas')).toHaveJSProperty('width', 1800);
+      await expect(page.locator('canvas')).toHaveJSProperty('height', 1300);
+      await page.setViewportSize({ width: 1000, height: 700 });
+    }
     await page.locator('#increment').click();
     assert.equal(await page.evaluate(() => window.fixture.clicks()), 1);
     const input = page.getByLabel('Name', { exact: true });
@@ -135,6 +143,7 @@ try {
         crossPageTab: true,
         orderedHitTesting: true,
         cameraGeometry: true,
+        backingStoreDpr: mode === 'gpu' ? 2 : null,
         animation: true,
         idle: true,
         release: true,
