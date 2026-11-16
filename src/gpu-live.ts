@@ -156,12 +156,22 @@ export class Live {
   position() {
     for (const node of this.retained) this.positionNode(node);
     if (this.current && !this.positioned) {
-      this.positionNode(this.current);
-      this.positioned = this.current.page.registered;
+      this.positioned = this.positionNode(this.current);
     }
   }
 
   reorder() {
+    // Native canvas has its own hit stack, independent of CSS and DOM paint order.
+    const pages = new Set<Page>();
+    for (const node of this.o.nodes.values()) {
+      if (this.retained.has(node) || node === this.current || node === this.focused)
+        pages.add(node.page);
+    }
+    for (const page of pages) {
+      if (!page.registered) this.transforms.delete(page);
+      this.o.canvas.updateElementGeometry(page.element, { preserveHitTestOrder: false });
+      page.registered = true;
+    }
     this.positioned = false;
     this.position();
   }
@@ -186,24 +196,23 @@ export class Live {
       node.dirty = true;
       this.unpin(node.page);
     }
-    this.position();
+    this.reorder();
     this.o.schedule();
   }
 
-  private positionNode(node: GpuNode) {
+  private positionNode(node: GpuNode): boolean {
     const { canvas } = this.o;
     const { zoom, x: cameraX, y: cameraY } = this.o.camera();
     const x = (node.rect.x - cameraX - node.pageX) * zoom;
     const y = (node.rect.y - cameraY - node.pageY) * zoom;
-    const order = [...this.o.nodes.keys()].indexOf(node.element);
-    const key = `${zoom}:${x}:${y}:${order}`;
+    const key = `${zoom}:${x}:${y}`;
     if (node.element.style.pointerEvents !== 'auto') node.element.style.pointerEvents = 'auto';
-    if (node.page.registered && this.transforms.get(node.page) === key) return;
+    if (node.page.registered && this.transforms.get(node.page) === key) return true;
     try {
-      node.page.element.style.zIndex = String(order);
       if (CANVAS_TRANSFORM_HIT_TESTS) {
         canvas.updateElementGeometry(node.page.element, {
           canvasTransform: new DOMMatrix([zoom, 0, 0, zoom, x, y]),
+          preserveHitTestOrder: true,
         });
       } else {
         const dpr = this.o.canvasDpr();
@@ -217,8 +226,10 @@ export class Live {
       node.page.registered = true;
       this.transforms.set(node.page, key);
       node.element.style.pointerEvents = 'auto';
+      return true;
     } catch {
       this.o.schedule();
+      return false;
     }
   }
 
@@ -235,6 +246,7 @@ export class Live {
     if (this.o.isPinned(page)) return;
     if (page.registered) this.o.canvas.clearElementGeometry(page.element);
     page.registered = false;
+    this.transforms.delete(page);
     page.element.style.transform = '';
     this.o.schedule();
   }

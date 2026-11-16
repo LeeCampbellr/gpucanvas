@@ -21,6 +21,9 @@ or focused control, not the entire scene. Each live page adds browser layout/pai
 work; performance must be measured with the intended live behavior enabled.
 Repeated calls with the same set do not schedule additional GPU draws.
 
-Build from source with `bun install`, `bun run typecheck`, and `bun run build`.
+Build from source with `pnpm install --frozen-lockfile`, `pnpm typecheck`, and
+`pnpm build`. Run `pnpm test:parity` in installed Chrome to check both backends.
+The pinned Git dependency uses pnpm, matching its consuming toolchain rather than
+requiring Bun to prepare the dependency.
 Git consumers build the package via `prepare`; generated `dist` is not committed.
 These changes were implemented with assistance from OpenAI GPT-6.1 Sol.

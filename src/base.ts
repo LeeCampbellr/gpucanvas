@@ -58,7 +58,7 @@ export function createBase<N extends BaseNode>(
   const unbindInput =
     options.input === false ? () => {} : bindCameraInput(surface, () => camera, setCamera);
 
-  /** The topmost node at a world point: the last one added draws on top. */
+  /** The topmost node at a world point follows the current back-to-front map order. */
   const nodeAt = (point: Point): N | null => {
     let top: N | null = null;
     for (const node of nodes.values()) if (containsPoint(node.rect, point)) top = node;
