@@ -14,6 +14,8 @@ export interface GpuCanvasOptions {
   /** Outline of the hovered element, any CSS color. Default: the selection color. */
   hoverColor?: string;
   camera?: Camera;
+  /** Bind built-in camera gestures. Set false when the application owns input. Default true. */
+  input?: boolean;
   /** Side of each atlas layer in texels. Default 4096, capped by the device. */
   atlasSize?: number;
   /** Atlas layers; each 4096 layer costs 64 MB of GPU memory. One holds thumbnails. Default 5. */
@@ -69,6 +71,15 @@ export interface GpuCanvas {
   addNode(element: HTMLElement, rect: Rect): void;
   updateNode(element: HTMLElement, rect: Rect): void;
   removeNode(element: HTMLElement): void;
+  /** Moves the supplied nodes to the front, in order, without detaching DOM or resetting state. */
+  setNodeOrder(elements: Iterable<HTMLElement>): void;
+  /**
+   * Keeps these nodes drawable and natively focusable/hit-testable. GPU nodes get individual
+   * pages so their native geometry can follow the camera independently. Pass [] to release.
+   * Keeping many nodes live costs browser layout/paint; normally retain the visible working set.
+   * DOM nodes are already live, so this is a no-op on that backend.
+   */
+  setLiveNodes(elements: Iterable<HTMLElement>): void;
   /** Where `element` sits on the canvas, in world units, or null when it is not a node. */
   getNodeRect(element: HTMLElement): Rect | null;
   /**

@@ -35,6 +35,8 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
       element.style.position = 'absolute';
       place(element, rect);
       world.append(element);
+      element.style.zIndex = String(base.nodes.size);
+      overlay.style.zIndex = String(base.nodes.size + 1);
       return { element, rect };
     },
     update(node, rect) {
@@ -46,6 +48,11 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
       selection.delete(element);
       outlinedNodes.delete(element);
       element.style.outline = '';
+    },
+    order() {
+      let order = 0;
+      for (const node of base.nodes.values()) node.element.style.zIndex = String(order++);
+      overlay.style.zIndex = String(order);
     },
   });
   const { surface, nodes } = base;
@@ -159,6 +166,7 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
   return {
     ...base.api,
     mode: 'dom',
+    setLiveNodes() {},
     getElementRect: elementRect,
     setSelection(elements) {
       selection = new Set(elements);

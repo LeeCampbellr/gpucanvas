@@ -60,6 +60,7 @@ export class Pages {
     const previous = node.page;
     const page = this.newPage(Math.ceil(node.rect.width), Math.ceil(node.rect.height));
     page.place(node.rect.width, node.rect.height);
+    if (previous.drawable) page.setDrawable(true, previous.promotedFrame);
     const target = page.element as HTMLElement & {
       moveBefore?: (child: Node, before: Node | null) => void;
     };

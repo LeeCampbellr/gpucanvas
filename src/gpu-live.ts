@@ -58,6 +58,8 @@ export class Live {
   press: Point = FAR_AWAY;
   pressedAt = -Infinity;
   private positioned = false;
+  private retained = new Set<GpuNode>();
+  private readonly transforms = new WeakMap<Page, string>();
   private lingering: GpuNode | null = null;
   private lingerTimer = 0;
   private focused: GpuNode | null = null;
@@ -92,7 +94,13 @@ export class Live {
 
   /** Nodes kept drawable and redrawn on every paint: under the pointer, focused, transitioning. */
   held() {
-    return [this.current, this.lingering, this.focused, ...this.transitioning.keys()];
+    return [
+      this.current,
+      this.lingering,
+      this.focused,
+      ...this.transitioning.keys(),
+      ...this.retained,
+    ];
   }
 
   /** Moves the hit-test target to `node`: its page is registered and positioned under it. */
@@ -107,7 +115,7 @@ export class Live {
       this.lingering = null;
     }
     if (previous) {
-      previous.element.style.pointerEvents = 'none';
+      if (!this.retained.has(previous)) previous.element.style.pointerEvents = 'none';
       clearTimeout(this.lingerTimer);
       const earlier = this.lingering;
       this.lingering = previous;
@@ -146,34 +154,77 @@ export class Live {
    * promoted this frame has no paint record there yet, so it is positioned on the next frame.
    */
   position() {
-    const live = this.current;
-    if (!live || this.positioned) return;
+    for (const node of this.retained) this.positionNode(node);
+    if (this.current && !this.positioned) {
+      this.positionNode(this.current);
+      this.positioned = this.current.page.registered;
+    }
+  }
+
+  reorder() {
+    this.positioned = false;
+    this.position();
+  }
+
+  retains(node: GpuNode) {
+    return this.retained.has(node);
+  }
+
+  retain(nodes: Set<GpuNode>) {
+    if (nodes.size === this.retained.size && [...nodes].every((node) => this.retained.has(node)))
+      return;
+    const previous = this.retained;
+    this.retained = nodes;
+    for (const node of nodes) {
+      node.page.setDrawable(true, this.o.frameNumber());
+      node.element.style.pointerEvents = 'auto';
+      if (!previous.has(node)) node.dirty = true;
+    }
+    for (const node of previous) {
+      if (nodes.has(node)) continue;
+      if (node !== this.current) node.element.style.pointerEvents = 'none';
+      node.dirty = true;
+      this.unpin(node.page);
+    }
+    this.position();
+    this.o.schedule();
+  }
+
+  private positionNode(node: GpuNode) {
     const { canvas } = this.o;
-    const camera = this.o.camera();
-    const { zoom } = camera;
-    const x = (live.rect.x - camera.x - live.pageX) * zoom;
-    const y = (live.rect.y - camera.y - live.pageY) * zoom;
+    const { zoom, x: cameraX, y: cameraY } = this.o.camera();
+    const x = (node.rect.x - cameraX - node.pageX) * zoom;
+    const y = (node.rect.y - cameraY - node.pageY) * zoom;
+    const order = [...this.o.nodes.keys()].indexOf(node.element);
+    const key = `${zoom}:${x}:${y}:${order}`;
+    if (node.element.style.pointerEvents !== 'auto') node.element.style.pointerEvents = 'auto';
+    if (node.page.registered && this.transforms.get(node.page) === key) return;
     try {
+      node.page.element.style.zIndex = String(order);
       if (CANVAS_TRANSFORM_HIT_TESTS) {
-        canvas.updateElementGeometry(live.page.element, {
+        canvas.updateElementGeometry(node.page.element, {
           canvasTransform: new DOMMatrix([zoom, 0, 0, zoom, x, y]),
         });
       } else {
         const dpr = this.o.canvasDpr();
-        const drawn = new DOMMatrix([zoom, 0, 0, zoom, x * dpr, y * dpr]);
-        live.page.element.style.transform = canvas
-          .getElementTransform(live.page.element, drawn)
+        node.page.element.style.transform = canvas
+          .getElementTransform(
+            node.page.element,
+            new DOMMatrix([zoom, 0, 0, zoom, x * dpr, y * dpr]),
+          )
           .toString();
       }
-      live.element.style.pointerEvents = 'auto';
-      this.positioned = true;
+      node.page.registered = true;
+      this.transforms.set(node.page, key);
+      node.element.style.pointerEvents = 'auto';
     } catch {
       this.o.schedule();
     }
   }
 
-  /** Puts the hit area back under `node` after it moved, when it is the live node. */
+  /** Geometry changes do not wait for another pointer event. */
   moved(node: GpuNode) {
+    if (this.retained.has(node)) this.positionNode(node);
     if (node !== this.current) return;
     this.positioned = false;
     this.position();
@@ -194,6 +245,7 @@ export class Live {
     if (this.lingering === node) this.lingering = null;
     if (this.focused === node) this.focused = null;
     this.transitioning.delete(node);
+    this.retained.delete(node);
   }
 
   destroy() {

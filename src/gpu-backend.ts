@@ -134,6 +134,15 @@ export async function createGpuCanvas(
           placeNode(node, pages.place(node.element, rect));
           pages.join(node);
         });
+        if (live.retains(node)) {
+          lift(node);
+          node.page.setDrawable(true, frameNumber);
+          live.moved(node);
+        }
+        schedule();
+      },
+      order() {
+        live.reorder();
         schedule();
       },
       remove(node) {
@@ -492,6 +501,17 @@ export async function createGpuCanvas(
   return {
     ...base.api,
     mode: 'gpu',
+    setLiveNodes(elements) {
+      const retained = new Set(
+        [...elements].map((element) => {
+          const node = nodes.get(element);
+          if (!node) throw new Error('setLiveNodes: element is not a canvas node');
+          return node;
+        }),
+      );
+      for (const node of retained) if (!node.solo) lift(node);
+      live.retain(retained);
+    },
     getElementRect(element) {
       const rect = ringRect(element);
       return rect ? { ...rect } : null;

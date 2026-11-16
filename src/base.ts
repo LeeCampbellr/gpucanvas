@@ -21,6 +21,8 @@ export interface NodeHooks<N extends BaseNode> {
   update(node: N, rect: Rect): void;
   /** Stops showing a node, before the base forgets it and removes its element. */
   remove(node: N): void;
+  /** Applies the node map's back-to-front order without moving mounted DOM. */
+  order(): void;
 }
 
 /**
@@ -53,7 +55,8 @@ export function createBase<N extends BaseNode>(
     onCamera(camera);
     options.onCameraChange?.(camera);
   };
-  const unbindInput = bindCameraInput(surface, () => camera, setCamera);
+  const unbindInput =
+    options.input === false ? () => {} : bindCameraInput(surface, () => camera, setCamera);
 
   /** The topmost node at a world point: the last one added draws on top. */
   const nodeAt = (point: Point): N | null => {
@@ -79,6 +82,19 @@ export function createBase<N extends BaseNode>(
       hooks.remove(node);
       nodes.delete(element);
       element.remove();
+      hooks.order();
+    },
+    setNodeOrder(elements) {
+      const ordered = [...elements].map((element) => {
+        const node = nodes.get(element);
+        if (!node) throw new Error('setNodeOrder: element is not a canvas node');
+        return node;
+      });
+      for (const node of ordered) {
+        nodes.delete(node.element);
+        nodes.set(node.element, node);
+      }
+      hooks.order();
     },
     getNodeRect: (element) => {
       const node = nodes.get(element);
