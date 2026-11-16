@@ -83,8 +83,8 @@ export interface GpuCanvas {
   /** Where `element` sits on the canvas, in world units, or null when it is not a node. */
   getNodeRect(element: HTMLElement): Rect | null;
   /**
-   * Nodes that overlap `rect` (world units), such as the ones under a selection box, in the order
-   * the current node order: later ones draw on top.
+   * Nodes that overlap `rect` (world units), such as the ones under a selection box, in current
+   * back-to-front node order: later ones draw on top.
    */
   getNodesIn(rect: Rect): HTMLElement[];
   /** The node that holds `element`: the element itself when it is a node, or null. */

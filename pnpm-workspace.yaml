@@ -1,0 +1,3 @@
+# Git preparation installs the build toolchain before producing dist.
+allowBuilds:
+  esbuild: true
