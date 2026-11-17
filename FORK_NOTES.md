@@ -62,3 +62,16 @@ every pinch frame. Static content returns to cached tiles when motion ends. If t
 visible region cannot fit a layer at full resolution, sharp mode uses tiles rather
 than shrinking the capture and leaving its outer edges blurry. `test:zoom` checks
 both static and animating content at normal and oversized viewport widths.
+
+Sharp quality preserves temporal cadence as well as spatial detail. It bypasses
+adaptive mode's 250 ms refresh limit for nodes smaller than 200 on-screen CSS pixels.
+CSS keyframes keep their own clock, duration and easing; they are not rewritten.
+Only the deliberate size-based raster throttle is removed, not the global work
+budgets. Adaptive overview behavior remains unchanged.
+
+`pnpm test:animation` compares presented pixel samples against native DOM at 100%,
+50% and 25% zoom for color, opacity and transform animations. It also checks that a
+180 ms transition retains intermediate frames, and verifies adaptive mode remains
+throttled. Spatial screenshots alone could not detect this temporal bug. The wide
+contrast fixture captures the full viewport so its native reference is genuinely
+outside the GPU surface rather than another region of that surface.

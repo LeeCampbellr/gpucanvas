@@ -290,8 +290,9 @@ export class Planner {
     this.contentTimer = window.setTimeout(this.schedule, CONTENT_SETTLE_MS + 10);
   }
 
-  /** How long a changed node waits before it is redrawn: only small ones wait. */
+  /** Only adaptive overview rendering trades animation cadence for reduced small-node work. */
   private refreshWait(node: GpuNode, now: number) {
+    if (this.quality === 'sharp') return 0;
     return smallOnScreen(node, this.zoom) ? node.refreshedAt + SMALL_REFRESH_MS - now : 0;
   }
 

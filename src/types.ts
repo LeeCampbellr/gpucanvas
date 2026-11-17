@@ -17,8 +17,8 @@ export interface GpuCanvasOptions {
   /** Bind built-in camera gestures. Set false when the application owns input. Default true. */
   input?: boolean;
   /**
-   * `sharp` rasterizes detail during camera movement and uses full-resolution animation previews.
-   * Existing raster budgets still apply. Default `adaptive` trades temporary detail for less work.
+   * `sharp` rasterizes detail during camera movement and uses full-resolution animation previews,
+   * without the adaptive size-based animation refresh throttle. Existing raster budgets still apply. Default `adaptive` trades temporary detail for less work.
    * The DOM backend is already rendered natively and ignores this option.
    */
   rasterQuality?: 'adaptive' | 'sharp';

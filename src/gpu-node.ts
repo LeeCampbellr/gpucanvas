@@ -75,9 +75,9 @@ export interface Tile {
 export const THUMBNAIL_SCALE = 1 / 16;
 
 /**
- * Live content (spinners, clocks, video) changes every frame. A node that small on screen shows
- * no difference between 60 redraws a second and a few, so below SMALL_NODE_PX it refreshes at
- * most every SMALL_REFRESH_MS. Thousands of tiny spinners then cost what a few large ones do.
+ * Adaptive overview rendering throttles small live nodes to SMALL_REFRESH_MS to limit work
+ * across thousands of spinners. Sharp quality must not apply this deliberate cadence reduction:
+ * short transitions and animation tuning remain visible even when their case is zoomed out.
  */
 const SMALL_NODE_PX = 200;
 export const SMALL_REFRESH_MS = 250;
