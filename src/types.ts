@@ -133,6 +133,11 @@ export interface GpuCanvas {
   /** Fits all nodes in view. */
   fit(padding?: number): void;
   getStats(): GpuCanvasStats;
+  /**
+   * Runs already queued GPU work in the host's current frame, avoiding a nested-animation-frame
+   * delay after camera/layout updates. Idle calls do not draw. DOM updates are already synchronous.
+   */
+  flush(): void;
   destroy(): void;
 }
 

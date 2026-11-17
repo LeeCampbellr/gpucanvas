@@ -166,6 +166,7 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
   return {
     ...base.api,
     mode: 'dom',
+    flush() {},
     setLiveNodes(elements) {
       for (const element of elements) {
         if (!nodes.has(element)) throw new Error('setLiveNodes: element is not a canvas node');

@@ -248,13 +248,14 @@ export async function createGpuCanvas(
     onThumbnail: 0,
   };
 
+  const renderQueuedFrame = () => {
+    rafId = 0;
+    frameNumber++;
+    frame(false);
+  };
   const schedule = () => {
     if (rafId || destroyed) return;
-    rafId = requestAnimationFrame(() => {
-      rafId = 0;
-      frameNumber++;
-      frame(false);
-    });
+    rafId = requestAnimationFrame(renderQueuedFrame);
   };
 
   /** Canvas pixels per CSS pixel. */
@@ -505,6 +506,11 @@ export async function createGpuCanvas(
   return {
     ...base.api,
     mode: 'gpu',
+    flush() {
+      if (!rafId || destroyed) return;
+      cancelAnimationFrame(rafId);
+      renderQueuedFrame();
+    },
     setLiveNodes(elements) {
       const retained = new Set(
         [...elements].map((element) => {

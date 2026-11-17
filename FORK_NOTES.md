@@ -48,3 +48,10 @@ Run `pnpm test:zoom` for static and animating resolution targets compared with n
 DOM at the same zoom/DPR. This catches visible softening that a zero pending count
 alone cannot detect. A zoom-out which replaces tiles with a sufficiently sharp whole
 snapshot is not a lost-detail event; the counter checks actual image density.
+
+`flush()` consumes already queued GPU work in the embedding application's current
+animation frame. Calling it after camera/layout changes avoids a second RAF delay
+between native hit geometry/overlays and the composited picture. It preserves the
+normal automatic scheduler for standalone callers, is a no-op when idle, and does
+not add draws to an idle scene. DOM updates are already synchronous. The browser
+fixture checks synchronous composition of a queued camera move and idle flushes.

@@ -121,6 +121,7 @@ try {
       await page.evaluate(() => {
         const { canvas, a, b } = window.fixture;
         canvas.setLiveNodes([a, b]);
+        canvas.flush();
       });
       await frames(page, 1);
     }
@@ -130,6 +131,20 @@ try {
         idleBefore,
         'Unchanged live sets kept drawing',
       );
+    if (mode === 'gpu') {
+      const flushed = await page.evaluate(() => {
+        const { canvas } = window.fixture;
+        const before = canvas.getStats().frames;
+        const camera = canvas.getCamera();
+        canvas.setCamera({ ...camera, x: camera.x + 1 });
+        canvas.flush();
+        const after = canvas.getStats().frames;
+        canvas.flush();
+        return { before, after, idle: canvas.getStats().frames };
+      });
+      assert(flushed.after > flushed.before, 'Flush left camera composition queued');
+      assert.equal(flushed.idle, flushed.after, 'An idle flush composited again');
+    }
     await page.evaluate(() => window.fixture.canvas.setLiveNodes([]));
     if (mode === 'gpu')
       await page.waitForFunction(() => window.fixture.canvas.getStats().drawablePages === 0);
@@ -146,6 +161,7 @@ try {
         backingStoreDpr: mode === 'gpu' ? 2 : null,
         animation: true,
         idle: true,
+        flush: true,
         release: true,
       }),
     );
