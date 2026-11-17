@@ -214,19 +214,24 @@ export class Planner {
     // Old tiles stay on screen under the preview until fresh ones replace them.
     if (node.dirty) for (const tile of node.tiles) tile.stale = true;
     if (!atlas.isValid(node.preview)) node.preview = null;
-    if (animating) {
+    if (animating || (this.quality === 'sharp' && moving)) {
       const scale = this.quality === 'sharp' ? detailScale : detailScale / 2;
-      const stale =
-        !node.preview ||
-        node.dirty ||
-        node.previewScale !== scale ||
-        !contains(node.previewRect!, shown);
-      if (stale) {
-        node.previewTarget = this.fitPreview(shown, scale);
-        node.previewTargetScale = scale;
+      const preview = this.fitPreview(shown, scale);
+      // A viewport capture reuses its screen-sized slot throughout a pinch. Oversized sharp
+      // views still use tiles: shrinking the capture would leave their edges undersampled.
+      if (this.quality === 'adaptive' || contains(preview, shown)) {
+        const stale =
+          !node.preview ||
+          node.dirty ||
+          node.previewScale !== scale ||
+          !contains(node.previewRect!, shown);
+        if (stale) {
+          node.previewTarget = preview;
+          node.previewTargetScale = scale;
+        }
+        if (animating) this.scheduleAfterContentSettles();
+        return [];
       }
-      this.scheduleAfterContentSettles();
-      return [];
     }
     // Adaptive zoom waits for rest; sharp quality fills current detail during the gesture.
     const current = node.tiles.filter((tile) => isCurrentTile(tile, detailScale));

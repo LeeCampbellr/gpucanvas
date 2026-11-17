@@ -6,7 +6,7 @@ import { chromium } from '@playwright/test';
 const directory = new URL('../dist/', import.meta.url);
 const files = new Set((await readdir(directory)).filter((name) => name.endsWith('.js')));
 const html = `<!doctype html><style>
-html,body{margin:0}#host,#reference{position:absolute;top:0;width:600px;height:700px;overflow:hidden}#reference{left:600px}
+html,body{margin:0}#host,#reference{position:absolute;top:0;width:50vw;height:700px;overflow:hidden}#reference{left:50vw}
 .spinner{position:absolute;left:10px;top:10px;width:10px;height:10px;background:red;animation:spin 800ms linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 .pattern{width:1000px;height:1000px;background:repeating-linear-gradient(90deg,#000 0px,#000 .5px,#fff .5px,#fff 1px);transform-origin:0 0}
 </style><div id="host"></div><div id="reference"><div class="pattern"></div></div><script type="module">
@@ -37,7 +37,7 @@ const address = server.address();
 assert(address && typeof address !== 'string');
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const page = await browser.newPage({
-  viewport: { width: 1200, height: 700 },
+  viewport: { width: process.argv.includes('--wide') ? 4800 : 1200, height: 700 },
   deviceScaleFactor: 2,
 });
 const frames = (count) =>
@@ -86,7 +86,7 @@ try {
           values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length,
         );
       };
-      return { gpu: contrast(0), native: contrast(1200) };
+      return { gpu: contrast(0), native: contrast(image.width / 2) };
     }, screenshot.toString('base64'));
     await page.waitForFunction(() => window.fixture.canvas.getStats().pending === 0);
     samples.push({

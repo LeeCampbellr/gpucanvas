@@ -55,3 +55,10 @@ between native hit geometry/overlays and the composited picture. It preserves th
 normal automatic scheduler for standalone callers, is a no-op when idle, and does
 not add draws to an idle scene. DOM updates are already synchronous. The browser
 fixture checks synchronous composition of a queued camera move and idle flushes.
+
+Sharp camera motion uses a full-resolution capture of the visible region, reusing
+its screen-sized atlas slot instead of allocating a new exact-scale tile grid on
+every pinch frame. Static content returns to cached tiles when motion ends. If the
+visible region cannot fit a layer at full resolution, sharp mode uses tiles rather
+than shrinking the capture and leaving its outer edges blurry. `test:zoom` checks
+both static and animating content at normal and oversized viewport widths.
