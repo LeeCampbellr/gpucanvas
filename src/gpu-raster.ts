@@ -167,14 +167,18 @@ export class Rasterizer {
       }
       let tilesLeft = 0;
       for (const job of plan.tiles) {
-        // A change since planning makes the job's content stale; the next plan redoes it.
+        // Wait for a required whole snapshot, but let dirty live nodes update through tiles
+        // when their existing snapshot is only a backdrop. recordPartial clears their dirty state.
         const { node, column, row, scale } = job;
         const old = node.tiles.findIndex(
           (tile) =>
             tile.stale && tile.scale === scale && tile.column === column && tile.row === row,
         );
         const previous = old >= 0 ? node.tiles[old].slot : null;
-        const slot = node.dirty ? null : drawRegion(node, job.rect, scale, previous);
+        const slot =
+          node.dirty && plan.nodes.includes(node)
+            ? null
+            : drawRegion(node, job.rect, scale, previous);
         if (!slot) {
           tilesLeft++;
           continue;
