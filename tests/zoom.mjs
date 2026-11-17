@@ -36,10 +36,8 @@ await new Promise((resolve) => server.listen(0, 'localhost', resolve));
 const address = server.address();
 assert(address && typeof address !== 'string');
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
-const page = await browser.newPage({
-  viewport: { width: process.argv.includes('--wide') ? 4800 : 1200, height: 700 },
-  deviceScaleFactor: 2,
-});
+const viewport = { width: process.argv.includes('--wide') ? 4800 : 1200, height: 700 };
+const page = await browser.newPage({ viewport, deviceScaleFactor: 2 });
 const frames = (count) =>
   page.evaluate(async (n) => {
     for (let i = 0; i < n; i++) await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -65,7 +63,7 @@ try {
     }, zoom);
     await frames(2);
     const screenshot = await page.screenshot({
-      clip: { x: 0, y: 240, width: 1200, height: 8 },
+      clip: { x: 0, y: 240, width: viewport.width, height: 8 },
       scale: 'device',
     });
     const contrast = await page.evaluate(async (png) => {
