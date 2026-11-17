@@ -9,6 +9,7 @@ import {
   type Tile,
 } from './gpu-node';
 import type { Page } from './page';
+import type { GpuCanvasOptions } from './types';
 import { center, contains, intersection, intersects, type Rect } from './rect';
 
 /** A tile a zoomed-in node is missing, waiting to be drawn. */
@@ -57,11 +58,14 @@ const BLURRY = 2;
 const OVERSAMPLED = 3;
 
 /**
- * Snapshots are rasterized at power-of-two scales so zooming reuses them; a snapshot up to 10%
- * too small is accepted before paying for the next scale.
+ * Snapshots reuse power-of-two scales. Only adaptive quality accepts up to 10% undersampling
+ * before paying for the next scale; sharp quality never deliberately undersamples.
  */
-function rasterScaleFor(deviceScale: number) {
-  const scale = 2 ** Math.ceil(Math.log2(deviceScale) - 0.14);
+function rasterScaleFor(
+  deviceScale: number,
+  quality: NonNullable<GpuCanvasOptions['rasterQuality']>,
+) {
+  const scale = 2 ** Math.ceil(Math.log2(deviceScale) - (quality === 'adaptive' ? 0.14 : 0));
   return Math.min(MAX_DETAIL_SCALE, Math.max(MIN_RASTER_SCALE, scale));
 }
 
@@ -97,6 +101,7 @@ export class Planner {
     /** Moves a node onto a page of its own. */
     private readonly lift: (node: GpuNode) => void,
     private readonly schedule: () => void,
+    private readonly quality: NonNullable<GpuCanvasOptions['rasterQuality']>,
   ) {}
 
   /**
@@ -107,7 +112,7 @@ export class Planner {
     const { atlas, visible, plans } = this;
     const atlasSize = atlas.size;
     const deviceScale = zoom * dpr;
-    const desiredScale = rasterScaleFor(deviceScale);
+    const desiredScale = rasterScaleFor(deviceScale, this.quality);
     const now = performance.now();
     this.zoom = zoom;
     // Tiles are redrawn whenever the zoom settles anyway, so they use the exact device scale:
@@ -210,7 +215,7 @@ export class Planner {
     if (node.dirty) for (const tile of node.tiles) tile.stale = true;
     if (!atlas.isValid(node.preview)) node.preview = null;
     if (animating) {
-      const scale = detailScale / 2;
+      const scale = this.quality === 'sharp' ? detailScale : detailScale / 2;
       const stale =
         !node.preview ||
         node.dirty ||
@@ -223,9 +228,9 @@ export class Planner {
       this.scheduleAfterContentSettles();
       return [];
     }
-    // Panning at a steady zoom keeps filling tiles; while the zoom changes it waits to settle.
+    // Adaptive zoom waits for rest; sharp quality fills current detail during the gesture.
     const current = node.tiles.filter((tile) => isCurrentTile(tile, detailScale));
-    if (moving && current.length === 0) return [];
+    if (this.quality === 'adaptive' && moving && current.length === 0) return [];
     const size = Math.max(1, Math.floor(TILE_PIXELS / detailScale));
     const jobs: TileJob[] = [];
     const first = (edge: number, origin: number) => Math.floor((edge - origin) / size);

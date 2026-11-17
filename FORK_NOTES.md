@@ -36,3 +36,15 @@ GPU backing-store dimensions follow CSS size × reported devicePixelRatio, match
 raster planning. Chrome's device-pixel-content-box ignores emulated DPR; relying on
 it rendered 1× output in a 2× context. The browser fixture asserts backing-store
 size before and after viewport resize so performance comparisons use equal density.
+
+`rasterQuality: 'sharp'` upgrades visible detail during camera motion, does not accept
+adaptive mode's 10% undersampling allowance, and renders animating previews at full
+display resolution. Existing pixel/call/time budgets still bound raster work; sharp
+does not promise that unlimited new content is instantly ready. The default remains
+`adaptive`, preserving its settle delay and half-resolution animation previews.
+The DOM backend already renders native pixels and ignores this option.
+
+Run `pnpm test:zoom` for static and animating resolution targets compared with native
+DOM at the same zoom/DPR. This catches visible softening that a zero pending count
+alone cannot detect. A zoom-out which replaces tiles with a sufficiently sharp whole
+snapshot is not a lost-detail event; the counter checks actual image density.

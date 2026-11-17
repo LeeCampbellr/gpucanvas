@@ -10,6 +10,7 @@ import {
   nodeOf,
   placeNode,
   translateNode,
+  THUMBNAIL_SCALE,
   type GpuNode,
   type Tile,
 } from './gpu-node';
@@ -307,7 +308,7 @@ export async function createGpuCanvas(
    * stays valid: the pixels did not change, only the page.
    */
   const lift = (node: GpuNode) => relocate(node, () => pages.lift(node));
-  const planner: Planner = new Planner(atlas, lift, schedule);
+  const planner: Planner = new Planner(atlas, lift, schedule, options.rasterQuality ?? 'adaptive');
 
   const composite = () => {
     const { visible, detailScale, view } = planner;
@@ -333,7 +334,10 @@ export async function createGpuCanvas(
       // into view is pop-in, not flicker.
       const before = node.shownFrame === stats.frames - 1 ? node.shown : 0;
       if (before >= 2 && shown === 1) stats.lostPixels++;
-      if (before === 3 && shown === 2) stats.lostDetail++;
+      // Dropping tiles on zoom-out loses no detail when the whole snapshot covers screen density.
+      const imageScale = image === node.slot ? node.slotScale : THUMBNAIL_SCALE;
+      if (before === 3 && shown === 2 && imageScale < base.camera().zoom * canvasDpr())
+        stats.lostDetail++;
       node.shown = shown;
       node.shownFrame = stats.frames;
       const worn = effects.size ? effects.get(node.element) : undefined;

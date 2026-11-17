@@ -16,6 +16,12 @@ export interface GpuCanvasOptions {
   camera?: Camera;
   /** Bind built-in camera gestures. Set false when the application owns input. Default true. */
   input?: boolean;
+  /**
+   * `sharp` rasterizes detail during camera movement and uses full-resolution animation previews.
+   * Existing raster budgets still apply. Default `adaptive` trades temporary detail for less work.
+   * The DOM backend is already rendered natively and ignores this option.
+   */
+  rasterQuality?: 'adaptive' | 'sharp';
   /** Side of each atlas layer in texels. Default 4096, capped by the device. */
   atlasSize?: number;
   /** Atlas layers; each 4096 layer costs 64 MB of GPU memory. One holds thumbnails. Default 5. */
