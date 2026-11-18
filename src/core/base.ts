@@ -1,6 +1,7 @@
 import { fitCamera, screenToWorld, viewOf, worldToScreen, type Camera } from './camera';
 import { elementInNode, nodeOfElement } from './elements';
 import { bindCameraInput, markSurface } from './input';
+import { bindTabOrder } from './tab-order';
 import { containsPoint, intersects, unionOf, type Point, type Rect } from './rect';
 import { DEFAULT_CAMERA, type GpuCanvas, type GpuCanvasOptions } from '../types';
 
@@ -21,6 +22,8 @@ export interface NodeHooks<N extends BaseNode> {
   update(node: N, rect: Rect): void;
   /** Stops showing a node, before the base forgets it and removes its element. */
   remove(node: N): void;
+  /** Makes a node's contents focusable, for Tab. The GPU backend shows its parked page. */
+  show?(node: N): void;
 }
 
 /**
@@ -54,6 +57,17 @@ export function createBase<N extends BaseNode>(
     options.onCameraChange?.(camera);
   };
   const unbindInput = bindCameraInput(surface, () => camera, setCamera);
+  const unbindTab = bindTabOrder({
+    surface,
+    nodes,
+    nodeOf: (element) => {
+      const key = nodeOfElement(nodes, element);
+      return key && nodes.get(key)!;
+    },
+    camera: () => camera,
+    setCamera,
+    show: hooks.show,
+  });
 
   /** The topmost node at a world point: the last one added draws on top. */
   const nodeAt = (point: Point): N | null => {
@@ -113,6 +127,7 @@ export function createBase<N extends BaseNode>(
     api,
     destroy() {
       unbindInput();
+      unbindTab();
       surface.remove();
     },
   };

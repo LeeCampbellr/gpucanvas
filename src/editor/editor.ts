@@ -544,7 +544,8 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
       if (event.shiftKey) return up();
       const first = layers.childrenOf(selection[0])[0];
       if (first) commit([first], [...scopes, selection[0]]);
-    } else if (event.key === 'Tab') {
+    } else if (event.key === 'Tab' && !event.defaultPrevented) {
+      // A Tab already handled (moving focus between fields in nodes) does not change the selection.
       event.preventDefault();
       const scope = scopes.at(-1);
       const siblings = scope

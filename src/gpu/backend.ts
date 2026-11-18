@@ -137,6 +137,9 @@ export async function createGpuCanvas(
         });
         schedule();
       },
+      show(node) {
+        node.page.setDrawable(true, frameNumber);
+      },
       remove(node) {
         live.forget(node);
         effects.delete(node.element);
