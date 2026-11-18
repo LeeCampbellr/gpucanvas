@@ -8,7 +8,7 @@ export type { Camera } from './core/camera';
 export type { Point, Rect } from './core/rect';
 export { fitCamera, screenToWorld, worldToScreen, zoomAt } from './core/camera';
 export type { Editor, EditorOptions, TransformEvent } from './editor/editor';
-export { bindEditor } from './editor/editor';
+export { bindEditor, createMarquee } from './editor/editor';
 export type { EditorPick, Layer } from './editor/layers';
 export type { Effect, EffectDefinition } from './features/effects';
 export { defineEffect, EFFECTS as effects } from './features/effects';

@@ -3,7 +3,12 @@ import { elementInNode, nodeOfElement } from './elements';
 import { bindCameraInput, markSurface } from './input';
 import { bindTabOrder } from './tab-order';
 import { containsPoint, intersects, unionOf, type Point, type Rect } from './rect';
-import { DEFAULT_CAMERA, type GpuCanvas, type GpuCanvasOptions } from '../types';
+import {
+  DEFAULT_CAMERA,
+  DEFAULT_SELECTION_COLOR,
+  type GpuCanvas,
+  type GpuCanvasOptions,
+} from '../types';
 
 export interface BaseNode {
   element: HTMLElement;
@@ -51,10 +56,12 @@ export function createBase<N extends BaseNode>(
 
   const nodes = new Map<HTMLElement, N>();
   let camera = options.camera ?? DEFAULT_CAMERA;
+  const cameraListeners = new Set<(camera: Camera) => void>();
   const setCamera = (next: Camera) => {
     camera = next;
     onCamera(camera);
     options.onCameraChange?.(camera);
+    for (const listener of cameraListeners) listener(camera);
   };
   const unbindInput = bindCameraInput(surface, () => camera, setCamera);
   const unbindTab = bindTabOrder({
@@ -78,6 +85,7 @@ export function createBase<N extends BaseNode>(
 
   const api = {
     surface,
+    selectionColor: options.selectionColor ?? DEFAULT_SELECTION_COLOR,
     addNode(element, rect) {
       if (nodes.has(element)) return api.updateNode(element, rect);
       styleNode(element);
@@ -98,6 +106,7 @@ export function createBase<N extends BaseNode>(
       const node = nodes.get(element);
       return node ? { ...node.rect } : null;
     },
+    getNodes: () => [...nodes.keys()],
     getNodesIn(rect) {
       const hits: HTMLElement[] = [];
       for (const node of nodes.values()) if (intersects(node.rect, rect)) hits.push(node.element);
@@ -110,6 +119,10 @@ export function createBase<N extends BaseNode>(
     },
     getCamera: () => camera,
     setCamera,
+    addCameraListener(listener) {
+      cameraListeners.add(listener);
+      return () => void cameraListeners.delete(listener);
+    },
     screenToWorld: (point) => screenToWorld(camera, point),
     worldToScreen: (point) => worldToScreen(camera, point),
     fit(padding) {
@@ -128,6 +141,7 @@ export function createBase<N extends BaseNode>(
     destroy() {
       unbindInput();
       unbindTab();
+      cameraListeners.clear();
       surface.remove();
     },
   };

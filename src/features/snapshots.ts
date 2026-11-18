@@ -87,7 +87,8 @@ export interface Filmstrip {
 
 /**
  * Keeps a snapshot of `node` after each change to its content, once the change has settled.
- * Starts with one of how it looks now. Keeps the latest `max` frames.
+ * Starts with one of how it looks now. Keeps the latest `max` frames. A snapshot that fails goes
+ * to `onError`; without one, the first failure is logged.
  */
 export function recordFilmstrip(
   canvas: Pick<GpuCanvas, 'snapshot'>,
@@ -97,11 +98,13 @@ export function recordFilmstrip(
     max = 30,
     settleMs = 400,
     onFrame,
+    onError,
   }: {
     scale?: number;
     max?: number;
     settleMs?: number;
     onFrame?: (frame: FilmstripFrame, frames: readonly FilmstripFrame[]) => void;
+    onError?: (error: unknown) => void;
   } = {},
 ): Filmstrip {
   const frames: FilmstripFrame[] = [];
@@ -119,6 +122,7 @@ export function recordFilmstrip(
         onFrame?.(frame, frames);
       })
       .catch((error) => {
+        if (onError) return onError(error);
         // Once per filmstrip: a DOM backend with no `snapshotFallback` fails every snapshot the same way.
         if (warned) return;
         warned = true;

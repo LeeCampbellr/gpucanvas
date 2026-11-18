@@ -71,12 +71,16 @@ export interface GpuCanvas {
   readonly mode: GpuCanvasMode;
   /** The element that receives camera input; the host's only child. */
   readonly surface: HTMLElement;
+  /** The selection outline color from the options, so editors and marks around it can match. */
+  readonly selectionColor: string;
   /** Places `element` on the canvas at `rect` (world units). The element keeps its own DOM and events. */
   addNode(element: HTMLElement, rect: Rect): void;
   updateNode(element: HTMLElement, rect: Rect): void;
   removeNode(element: HTMLElement): void;
   /** Where `element` sits on the canvas, in world units, or null when it is not a node. */
   getNodeRect(element: HTMLElement): Rect | null;
+  /** Every node, in the order they were added: later ones draw on top. */
+  getNodes(): HTMLElement[];
   /**
    * Nodes that overlap `rect` (world units), such as the ones under a selection box, in the order
    * they were added: later ones draw on top.
@@ -103,6 +107,11 @@ export interface GpuCanvas {
   setEffect(node: HTMLElement, effect: Effect | null, params?: ArrayLike<number>): void;
   getCamera(): Camera;
   setCamera(camera: Camera): void;
+  /**
+   * Calls `listener` on every camera change, from input or `setCamera`, such as to move a popup
+   * that lives outside the canvas. Returns a function that stops it.
+   */
+  addCameraListener(listener: (camera: Camera) => void): () => void;
   /** A point in surface pixels as world units, under the current camera. */
   screenToWorld(point: Point): Point;
   /** A world point as surface pixels, under the current camera. */

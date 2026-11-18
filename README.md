@@ -64,7 +64,7 @@ smaller so the tab is not killed for memory: 1,000 screens on the GPU path and 2
 Safari and every iPhone or iPad browser have no HTML-in-Canvas yet, so they run the DOM version and
 say so.
 
-Status: early (0.4). The API can still change.
+Status: early (0.6). The API can still change.
 
 ```sh
 npm install gpucanvas
@@ -149,14 +149,33 @@ The building blocks, for your own interactions:
 canvas.getElementAt(point); // deepest element at a world point
 canvas.getElementRect(el); // any element's rect in world units
 canvas.getNodeOf(el); // the node that holds it
+canvas.getNodes(); // every node, in the order they were added
 canvas.getNodesIn(rect); // nodes overlapping a world rect
 canvas.setSelection(elements); // outline these; [] clears
 canvas.setHover(el); // a lighter outline; null clears
 canvas.screenToWorld(point); // surface pixels to world units, and worldToScreen back
+canvas.addCameraListener((camera) => {}); // every camera change; returns a function that stops it
+createMarquee(canvas).update(a, b); // a selection box between two surface points; returns its world rect
 ```
 
-Colors are the `selectionColor` and `hoverColor` options. In the demo, the toolbar switches between
+Colors are the `selectionColor` and `hoverColor` options; the editor, marks and marquee follow
+`selectionColor` unless given their own. In the demo, the toolbar switches between
 Edit and Interact (clicks reach the components) and picks components, elements or whole screens.
+
+## Keyboard and popups
+
+Tab and Shift+Tab move through the fields of every node, in the order the nodes were added, and
+the camera pans just enough to show the field. Past the last node, Tab leaves the canvas.
+
+Popups a component opens in `document.body` (Radix, floating-ui) open next to their button, since
+a node under the pointer or holding focus reports where it is drawn from `getBoundingClientRect`.
+The camera moves without scrolling anything, so tell the popup library when it does:
+
+```ts
+const stop = canvas.addCameraListener(() => popup.update()); // floating-ui: computePosition again
+```
+
+`position: fixed` inside a node is fixed to the node, on both backends.
 
 ## Shader effects
 
@@ -228,7 +247,7 @@ const after = await canvas.snapshot(node, { scale: 2 });
 const { changed, bounds, image } = diffImages(before, after); // what moved, and where
 
 // A snapshot after every change, once it settles.
-const strip = recordFilmstrip(canvas, node, { scale: 0.25, max: 30 });
+const strip = recordFilmstrip(canvas, node, { scale: 0.25, max: 30, onError: console.error });
 strip.frames; // [{ at, image }, ...]
 strip.stop();
 ```
@@ -359,7 +378,8 @@ to npm from GitHub Actions, with provenance, through npm trusted publishing. See
    under 200 screen pixels refreshes at most four times a second.
 7. **Input.** Only the page under the pointer is registered for hit testing, and its canvas
    transform puts the node under the pointer exactly where the GPU drew it. Clicks, typing, selection and
-   hover all go to the real element. A focused node keeps its page live. Touch has no hover, so a
+   hover all go to the real element. A focused node keeps its page live, lined up with its
+   drawing when the pointer is elsewhere. Touch has no hover, so a
    tap makes the node under the finger live and hands the click to the element it landed on. A
    two-finger pinch zooms and pans the camera wherever the fingers land.
 
@@ -417,6 +437,4 @@ so a gap of a few percent, like frost above none, is noise rather than a speedup
 
 ## Next
 
-- **Keyboard and accessibility.** Parked pages use `content-visibility: hidden`, so Tab skips
-  their nodes. A focused node already stays live; moving focus across pages needs a focus model.
 - **Workers.** Composite in a worker with `captureElementImage`, and drive culling from the GPU.

@@ -1,4 +1,5 @@
 import {
+  createMarquee,
   easeInOut,
   fitCamera,
   worldToScreen,
@@ -12,7 +13,6 @@ import { center, worldRectOf } from './geometry';
 import { centeredOn, lerpCamera } from './fly';
 import { nodeClass } from './playground';
 import type { ScreenRef } from './screens';
-import { createMarquee } from '../src/editor/editor';
 
 /** A frame longer than this counts as jank. */
 export const JANK_MS = 20;
