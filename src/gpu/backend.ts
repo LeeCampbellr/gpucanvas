@@ -105,7 +105,7 @@ export async function createGpuCanvas(
     () => {
       lastCameraChange = performance.now();
       // A moving canvas has no hover; the node under a still pointer becomes live once it rests.
-      live.set(null);
+      live.cameraMoved();
       clearTimeout(settleTimer);
       settleTimer = window.setTimeout(() => {
         live.pick();

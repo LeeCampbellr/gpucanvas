@@ -58,6 +58,8 @@ export class Live {
   press: Point = FAR_AWAY;
   pressedAt = -Infinity;
   private positioned = false;
+  /** The node whose page is lined up under its drawing: the live one, else the focused one. */
+  private anchored: GpuNode | null = null;
   private lingering: GpuNode | null = null;
   private lingerTimer = 0;
   private focused: GpuNode | null = null;
@@ -98,7 +100,6 @@ export class Live {
   /** Moves the hit-test target to `node`: its page is registered and positioned under it. */
   set(node: GpuNode | null) {
     if (node === this.current) return;
-    const { canvas, frameNumber, schedule } = this.o;
     const previous = this.current;
     this.current = node;
     // Back before it was let go: it is held again, not redrawn as it rests.
@@ -120,16 +121,34 @@ export class Live {
       }, LINGER_MS);
       this.unpin(previous.page);
     }
+    this.anchor();
+  }
+
+  /**
+   * Lines up the page of the live node, or of the focused one when no node is live, with where
+   * the GPU draws it. Its elements then report their drawn position from `getBoundingClientRect`,
+   * so a popup a component opens in `document.body` lands next to the button that opened it, and
+   * stays there as the camera moves while the button keeps focus.
+   */
+  private anchor() {
+    const node = this.current ?? this.focused;
+    this.anchored = node;
+    this.positioned = false;
     if (!node) return;
     const { page } = node;
-    page.setDrawable(true, frameNumber());
+    page.setDrawable(true, this.o.frameNumber());
     if (!page.registered) {
-      canvas.updateElementGeometry(page.element, {});
+      this.o.canvas.updateElementGeometry(page.element, {});
       page.registered = true;
     }
-    this.positioned = false;
     this.position();
-    schedule();
+    this.o.schedule();
+  }
+
+  /** The camera moved: no node is live until it rests, and the focused one is lined up again. */
+  cameraMoved() {
+    if (this.current) this.set(null);
+    else this.anchor();
   }
 
   /** Makes the topmost node under the last pointer position live. */
@@ -146,7 +165,7 @@ export class Live {
    * promoted this frame has no paint record there yet, so it is positioned on the next frame.
    */
   position() {
-    const live = this.current;
+    const live = this.anchored;
     if (!live || this.positioned) return;
     const { canvas } = this.o;
     const camera = this.o.camera();
@@ -165,7 +184,8 @@ export class Live {
           .getElementTransform(live.page.element, drawn)
           .toString();
       }
-      live.element.style.pointerEvents = 'auto';
+      // Only the node under the pointer takes it: wheeling over a focused node still pans.
+      if (live === this.current) live.element.style.pointerEvents = 'auto';
       this.positioned = true;
     } catch {
       this.o.schedule();
@@ -174,7 +194,7 @@ export class Live {
 
   /** Puts the hit area back under `node` after it moved, when it is the live node. */
   moved(node: GpuNode) {
-    if (node !== this.current) return;
+    if (node !== this.anchored) return;
     this.positioned = false;
     this.position();
   }
@@ -194,6 +214,7 @@ export class Live {
     if (this.lingering === node) this.lingering = null;
     if (this.focused === node) this.focused = null;
     this.transitioning.delete(node);
+    if (this.anchored === node) this.anchor();
   }
 
   destroy() {
@@ -277,6 +298,7 @@ export class Live {
       node.dirty = true;
       this.o.schedule();
     }
+    if (!this.current) this.anchor();
   };
 
   private onFocusOut = (event: FocusEvent) => {
@@ -284,6 +306,7 @@ export class Live {
     const previous = this.focused;
     this.focused = null;
     if (previous) this.letGo(previous);
+    if (!this.current) this.anchor();
   };
 
   // A transition paints without touching the DOM, so a click (from a person or from script)
