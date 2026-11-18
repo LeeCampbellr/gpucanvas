@@ -1,7 +1,7 @@
-import { worldToScreen, type Camera } from './camera';
-import type { Rect } from './rect';
+import { worldToScreen, type Camera } from '../core/camera';
+import type { Rect } from '../core/rect';
 import type { Guide } from './snap';
-import { SURFACE_Z } from './types';
+import { SURFACE_Z } from '../types';
 
 /** Resize handles, by the edges they move. */
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const;

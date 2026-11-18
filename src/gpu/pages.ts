@@ -1,6 +1,6 @@
-import type { GpuNode } from './gpu-node';
+import type { GpuNode } from './node';
 import { Page } from './page';
-import type { Rect } from './rect';
+import type { Rect } from '../core/rect';
 
 /**
  * The pages inside the canvas and the nodes on each. New nodes fill the open page until it is

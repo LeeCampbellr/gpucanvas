@@ -1,8 +1,8 @@
 import type { Atlas, AtlasSlot } from './atlas';
-import type { Camera } from './camera';
-import type { Point, Rect } from './rect';
+import type { Camera } from '../core/camera';
+import type { Point, Rect } from '../core/rect';
 import { compositeShader, effectShader, KIND } from './composite-shader';
-import type { Effect } from './effects';
+import type { Effect } from '../features/effects';
 
 const FLOATS_PER_INSTANCE = 16;
 

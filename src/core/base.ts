@@ -1,8 +1,14 @@
 import { fitCamera, screenToWorld, viewOf, worldToScreen, type Camera } from './camera';
 import { elementInNode, nodeOfElement } from './elements';
 import { bindCameraInput, markSurface } from './input';
+import { bindTabOrder } from './tab-order';
 import { containsPoint, intersects, unionOf, type Point, type Rect } from './rect';
-import { DEFAULT_CAMERA, type GpuCanvas, type GpuCanvasOptions } from './types';
+import {
+  DEFAULT_CAMERA,
+  DEFAULT_SELECTION_COLOR,
+  type GpuCanvas,
+  type GpuCanvasOptions,
+} from '../types';
 
 export interface BaseNode {
   element: HTMLElement;
@@ -23,6 +29,8 @@ export interface NodeHooks<N extends BaseNode> {
   remove(node: N): void;
   /** Applies the node map's back-to-front order without moving mounted DOM. */
   order(): void;
+  /** Makes a node's contents focusable, for Tab. The GPU backend shows its parked page. */
+  show?(node: N): void;
 }
 
 /**
@@ -50,13 +58,30 @@ export function createBase<N extends BaseNode>(
 
   const nodes = new Map<HTMLElement, N>();
   let camera = options.camera ?? DEFAULT_CAMERA;
+  const cameraListeners = new Set<(camera: Camera) => void>();
   const setCamera = (next: Camera) => {
     camera = next;
     onCamera(camera);
     options.onCameraChange?.(camera);
+    for (const listener of cameraListeners) listener(camera);
   };
   const unbindInput =
-    options.input === false ? () => {} : bindCameraInput(surface, () => camera, setCamera);
+    options.input === false ? undefined : bindCameraInput(surface, () => camera, setCamera);
+  // Tab order follows insertion, even if an app later changes the visual stack.
+  const tabNodes = options.input === false ? undefined : new Set<N>();
+  const unbindTab =
+    tabNodes &&
+    bindTabOrder({
+      surface,
+      nodes: tabNodes,
+      nodeOf: (element) => {
+        const key = nodeOfElement(nodes, element);
+        return key && nodes.get(key)!;
+      },
+      camera: () => camera,
+      setCamera,
+      show: hooks.show,
+    });
 
   /** The topmost node at a world point follows the current back-to-front map order. */
   const nodeAt = (point: Point): N | null => {
@@ -67,10 +92,13 @@ export function createBase<N extends BaseNode>(
 
   const api = {
     surface,
+    selectionColor: options.selectionColor ?? DEFAULT_SELECTION_COLOR,
     addNode(element, rect) {
       if (nodes.has(element)) return api.updateNode(element, rect);
       styleNode(element);
-      nodes.set(element, hooks.add(element, rect));
+      const node = hooks.add(element, rect);
+      nodes.set(element, node);
+      tabNodes?.add(node);
     },
     updateNode(element, rect) {
       const node = nodes.get(element);
@@ -81,6 +109,7 @@ export function createBase<N extends BaseNode>(
       if (!node) return;
       hooks.remove(node);
       nodes.delete(element);
+      tabNodes?.delete(node);
       element.remove();
       hooks.order();
     },
@@ -100,6 +129,7 @@ export function createBase<N extends BaseNode>(
       const node = nodes.get(element);
       return node ? { ...node.rect } : null;
     },
+    getNodes: () => [...nodes.keys()],
     getNodesIn(rect) {
       const hits: HTMLElement[] = [];
       for (const node of nodes.values()) if (intersects(node.rect, rect)) hits.push(node.element);
@@ -112,6 +142,10 @@ export function createBase<N extends BaseNode>(
     },
     getCamera: () => camera,
     setCamera,
+    addCameraListener(listener) {
+      cameraListeners.add(listener);
+      return () => void cameraListeners.delete(listener);
+    },
     screenToWorld: (point) => screenToWorld(camera, point),
     worldToScreen: (point) => worldToScreen(camera, point),
     fit(padding) {
@@ -128,7 +162,9 @@ export function createBase<N extends BaseNode>(
     nodeAt,
     api,
     destroy() {
-      unbindInput();
+      unbindInput?.();
+      unbindTab?.();
+      cameraListeners.clear();
       surface.remove();
     },
   };

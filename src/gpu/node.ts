@@ -1,7 +1,7 @@
 import type { Atlas, AtlasSlot } from './atlas';
-import { nodeOfElement } from './elements';
+import { nodeOfElement } from '../core/elements';
 import type { Page, PageSlot } from './page';
-import type { Rect } from './rect';
+import type { Rect } from '../core/rect';
 
 /** A node on the GPU backend: where it sits, and what of it the atlas holds. */
 export interface GpuNode {

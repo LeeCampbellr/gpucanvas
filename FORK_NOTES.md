@@ -1,11 +1,12 @@
 # Experimental interaction hooks
 
-Based on upstream gpucanvas 0.4.5 (dd25d1a154fdc704143637cdbac3bf1a6886d5af).
+Based on upstream gpucanvas 0.6.0 (a45e1978d375ffaba7471aa13b867a0cc998f840).
 The original MIT license and attribution are retained. Core runtime dependencies
 remain empty. No application source or application-specific behavior is included.
 
-- `input: false` disables the built-in camera gesture listeners. Applications can
-  drive `setCamera` while owning their input policy. The default stays enabled.
+- `input: false` disables built-in camera gestures and Tab navigation. Applications
+  can drive `setCamera` while owning keyboard and pointer policy. By default, both
+  remain enabled, and Tab follows insertion order independently of visual order.
 - `setNodeOrder(elements)` moves the supplied nodes to the front in the supplied
   back-to-front order. Other nodes retain their relative order. It does not detach
   DOM, recreate nodes or discard focus/state; unknown nodes are rejected before
@@ -26,7 +27,7 @@ Build from source with `pnpm install --frozen-lockfile`, `pnpm typecheck`, and
 The pinned Git dependency uses pnpm, matching its consuming toolchain rather than
 requiring Bun to prepare the dependency.
 Git consumers build the package via `prepare`; generated `dist` is not committed.
-These changes were implemented with assistance from OpenAI GPT-6.1 Sol.
+These changes were implemented with assistance from OpenAI GPT-6.1 Sol and GPT-6.2 Sol.
 
 Retained nodes resize directly between drawable pages using state-preserving moves;
 resizing must not blur an input or lose its current value. The browser fixture checks

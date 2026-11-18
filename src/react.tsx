@@ -20,7 +20,7 @@ import {
   type GpuCanvasOptions,
   type Layer,
 } from './index';
-import { defaultLabel } from './editor';
+import { defaultLabel } from './editor/editor';
 
 const CanvasContext = createContext<GpuCanvasInstance | null>(null);
 

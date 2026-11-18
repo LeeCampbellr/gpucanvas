@@ -1,6 +1,6 @@
-import type { Camera } from './camera';
-import type { Point, Rect } from './rect';
-import type { Effect } from './effects';
+import type { Camera } from './core/camera';
+import type { Point, Rect } from './core/rect';
+import type { Effect } from './features/effects';
 
 export type GpuCanvasMode = 'gpu' | 'dom';
 
@@ -14,7 +14,7 @@ export interface GpuCanvasOptions {
   /** Outline of the hovered element, any CSS color. Default: the selection color. */
   hoverColor?: string;
   camera?: Camera;
-  /** Bind built-in camera gestures. Set false when the application owns input. Default true. */
+  /** Bind built-in camera gestures and Tab navigation. Set false when the host owns input. Default true. */
   input?: boolean;
   /**
    * `sharp` rasterizes detail during camera movement and uses full-resolution animation previews,
@@ -35,6 +35,12 @@ export interface GpuCanvasOptions {
   /** Side of a page, the unit nodes are batched into for rasterizing, in CSS pixels. Default 2048. */
   pageSize?: number;
   onCameraChange?: (camera: Camera) => void;
+  /**
+   * Draws `snapshot` on the DOM backend, which cannot draw a node itself: return the node's
+   * pixels at `scale` texels per CSS pixel, with straight alpha. Any DOM-to-image library fits.
+   * The GPU backend never calls it.
+   */
+  snapshotFallback?: (node: HTMLElement, options: { scale: number }) => Promise<ImageData>;
 }
 
 export interface GpuCanvasStats {
@@ -73,6 +79,8 @@ export interface GpuCanvas {
   readonly mode: GpuCanvasMode;
   /** The element that receives camera input; the host's only child. */
   readonly surface: HTMLElement;
+  /** The selection outline color from the options, so editors and marks around it can match. */
+  readonly selectionColor: string;
   /** Places `element` on the canvas at `rect` (world units). The element keeps its own DOM and events. */
   addNode(element: HTMLElement, rect: Rect): void;
   updateNode(element: HTMLElement, rect: Rect): void;
@@ -88,6 +96,8 @@ export interface GpuCanvas {
   setLiveNodes(elements: Iterable<HTMLElement>): void;
   /** Where `element` sits on the canvas, in world units, or null when it is not a node. */
   getNodeRect(element: HTMLElement): Rect | null;
+  /** Every node in back-to-front draw order, initially the order they were added. */
+  getNodes(): HTMLElement[];
   /**
    * Nodes that overlap `rect` (world units), such as the ones under a selection box, in current
    * back-to-front node order: later ones draw on top.
@@ -114,6 +124,11 @@ export interface GpuCanvas {
   setEffect(node: HTMLElement, effect: Effect | null, params?: ArrayLike<number>): void;
   getCamera(): Camera;
   setCamera(camera: Camera): void;
+  /**
+   * Calls `listener` on every camera change, from input or `setCamera`, such as to move a popup
+   * that lives outside the canvas. Returns a function that stops it.
+   */
+  addCameraListener(listener: (camera: Camera) => void): () => void;
   /** A point in surface pixels as world units, under the current camera. */
   screenToWorld(point: Point): Point;
   /** A world point as surface pixels, under the current camera. */
@@ -125,7 +140,8 @@ export interface GpuCanvas {
   invalidate(): void;
   /**
    * The node's pixels as it looks now, drawn fresh at `scale` texels per CSS pixel (default the
-   * device pixel ratio), with straight alpha. GPU backend only: the DOM backend rejects.
+   * device pixel ratio), with straight alpha. The DOM backend draws it with
+   * `options.snapshotFallback`, and rejects without one.
    */
   snapshot(node: HTMLElement, options?: { scale?: number }): Promise<ImageData>;
   /** Changes the canvas background, any CSS color. */

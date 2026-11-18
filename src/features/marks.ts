@@ -1,6 +1,6 @@
-import { rectToScreen } from './camera';
-import type { Point, Rect } from './rect';
-import { DEFAULT_SELECTION_COLOR, SURFACE_Z, type GpuCanvas } from './types';
+import { rectToScreen } from '../core/camera';
+import type { Point, Rect } from '../core/rect';
+import { SURFACE_Z, type GpuCanvas } from '../types';
 
 /** Something drawn above the nodes. `remove` takes it off the canvas. */
 export interface Mark {
@@ -36,7 +36,7 @@ const pillStyle = (color: string) => ({
  * element (what an agent is talking about), and live cursors. They follow the camera and the
  * elements they are attached to, and stay the same size on screen at any zoom.
  */
-export function createMarks(canvas: GpuCanvas, { color = DEFAULT_SELECTION_COLOR } = {}) {
+export function createMarks(canvas: GpuCanvas, { color = canvas.selectionColor } = {}) {
   const id = `gpucanvas-marks-${++instances}`;
   const root = document.createElement('div');
   Object.assign(root.style, {

@@ -1,16 +1,16 @@
-import { createBase, type BaseNode } from './base';
-import { markSurface } from './input';
-import type { Camera } from './camera';
-import { effectParams, type Effect } from './effects';
-import { nodeOfElement, rectInNode } from './elements';
-import { intersects, type Rect } from './rect';
+import { createBase, type BaseNode } from '../core/base';
+import { markSurface } from '../core/input';
+import type { Camera } from '../core/camera';
+import { effectParams, type Effect } from '../features/effects';
+import { nodeOfElement, rectInNode } from '../core/elements';
+import { intersects, type Rect } from '../core/rect';
 import {
   DEFAULT_SELECTION_COLOR,
   HOVER_WIDTH,
   SELECTION_WIDTH,
   type GpuCanvas,
   type GpuCanvasOptions,
-} from './types';
+} from '../types';
 
 /**
  * The fallback, and the way most infinite canvases work today: every node is absolutely
@@ -101,13 +101,18 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
       }
     }
   };
+  /** Nodes `snapshotFallback` is drawing now, once for each snapshot under way. */
+  const capturing: HTMLElement[] = [];
   const drawOutlines = () => {
     const wanted = new Map<Element, string>();
     for (const element of selection) wanted.set(element, selectionRing);
     if (hovered && !wanted.has(hovered)) wanted.set(hovered, hoverRing);
+    // Snapshots show the node alone, as on the GPU backend: no outline on it or inside it.
+    overlay.style.visibility = capturing.length ? 'hidden' : '';
     const nextNodes = new Set<HTMLElement>();
     for (const [element, outline] of wanted) {
       if (!nodes.has(element as HTMLElement)) continue;
+      if (capturing.includes(element as HTMLElement)) continue;
       (element as HTMLElement).style.outline = outline;
       nextNodes.add(element as HTMLElement);
     }
@@ -187,8 +192,22 @@ export function createDomCanvas(host: HTMLElement, options: GpuCanvasOptions): G
     },
     // The browser repaints DOM nodes itself.
     invalidate() {},
-    snapshot: () =>
-      Promise.reject(new Error('snapshot needs the GPU backend (WebGPU and HTML-in-Canvas)')),
+    async snapshot(element, { scale = devicePixelRatio } = {}) {
+      if (!nodes.has(element)) throw new Error('Not a node on this canvas');
+      if (!options.snapshotFallback) {
+        throw new Error(
+          'snapshot needs the GPU backend (WebGPU and HTML-in-Canvas) or snapshotFallback',
+        );
+      }
+      capturing.push(element);
+      drawOutlines();
+      try {
+        return await options.snapshotFallback(element, { scale });
+      } finally {
+        capturing.splice(capturing.indexOf(element), 1);
+        drawOutlines();
+      }
+    },
     setBackground(color) {
       surface.style.background = color;
     },

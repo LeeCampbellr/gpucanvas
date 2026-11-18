@@ -9,11 +9,11 @@ import {
   texels,
   THUMBNAIL_SCALE,
   type GpuNode,
-} from './gpu-node';
-import type { Pages } from './gpu-pages';
-import type { PagePlan } from './gpu-plan';
+} from './node';
+import type { Pages } from './pages';
+import type { PagePlan } from './plan';
 import type { Page } from './page';
-import type { Rect } from './rect';
+import type { Rect } from '../core/rect';
 
 /** Live content redraws its thumbnail at most this often; nobody reads a spinner at 3% zoom. */
 const THUMBNAIL_REFRESH_MS = 1000;

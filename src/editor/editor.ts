@@ -1,10 +1,10 @@
-import { rectToScreen, screenToWorld, viewOf } from './camera';
-import { pointIn } from './input';
+import { rectToScreen, screenToWorld, viewOf } from '../core/camera';
+import { pointIn } from '../core/input';
 import { createLayers, layerIn, layerRect, sameLayer, type EditorPick, type Layer } from './layers';
 import { createOverlay, guideRect, HANDLE_ANCHORS, handleAt, type Handle } from './overlay';
-import { unionOf, type Point, type Rect } from './rect';
+import { unionOf, type Point, type Rect } from '../core/rect';
 import { snapRect, type Guide } from './snap';
-import { DEFAULT_SELECTION_COLOR, SURFACE_Z, type GpuCanvas } from './types';
+import { SURFACE_Z, type GpuCanvas } from '../types';
 
 export interface TransformEvent {
   phase: 'start' | 'move' | 'end' | 'cancel';
@@ -61,10 +61,10 @@ export interface Editor {
   destroy(): void;
 }
 
-type MarqueeCanvas = Pick<GpuCanvas, 'surface' | 'getCamera'>;
+type MarqueeCanvas = Pick<GpuCanvas, 'surface' | 'getCamera' | 'selectionColor'>;
 
 /** A selection box over the canvas, drawn in surface pixels; the caller selects what it covers. */
-export function createMarquee(canvas: MarqueeCanvas, color = DEFAULT_SELECTION_COLOR) {
+export function createMarquee(canvas: MarqueeCanvas, color = canvas.selectionColor) {
   const box = document.createElement('div');
   Object.assign(box.style, {
     position: 'absolute',
@@ -115,8 +115,6 @@ const CLICK_SLOP = 4;
 const SNAP_PX = 6;
 /** Above this many layers the selection shows one size, not each name. */
 const MAX_NAMED = 1;
-/** A world rect around every node, for queries over the whole canvas. */
-const EVERYWHERE: Rect = { x: -1e9, y: -1e9, width: 2e9, height: 2e9 };
 
 const isEditable = (element: Element | null) =>
   !!element &&
@@ -163,7 +161,7 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
     marquee = true,
     labels = true,
     snap = true,
-    color = DEFAULT_SELECTION_COLOR,
+    color = canvas.selectionColor,
     onChange,
     onTransform,
   } = options;
@@ -544,12 +542,11 @@ export function bindEditor(canvas: GpuCanvas, options: EditorOptions = {}): Edit
       if (event.shiftKey) return up();
       const first = layers.childrenOf(selection[0])[0];
       if (first) commit([first], [...scopes, selection[0]]);
-    } else if (event.key === 'Tab') {
+    } else if (event.key === 'Tab' && !event.defaultPrevented) {
+      // A Tab already handled (moving focus between fields in nodes) does not change the selection.
       event.preventDefault();
       const scope = scopes.at(-1);
-      const siblings = scope
-        ? layers.childrenOf(scope)
-        : canvas.getNodesIn(EVERYWHERE).map((node) => [node]);
+      const siblings = scope ? layers.childrenOf(scope) : canvas.getNodes().map((node) => [node]);
       const index = siblings.findIndex((layer) => sameLayer(layer, selection[0]));
       const step = event.shiftKey ? -1 : 1;
       const next = siblings[(index + step + siblings.length) % siblings.length];

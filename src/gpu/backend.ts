@@ -1,9 +1,10 @@
 import { Atlas } from './atlas';
-import { createBase } from './base';
-import { screenToWorld } from './camera';
-import { nodeOfElement, rectInNode } from './elements';
-import { effectPad, effectParams, type Effect } from './effects';
-import { Live, FAR_AWAY } from './gpu-live';
+import { createBase } from '../core/base';
+import { screenToWorld } from '../core/camera';
+import { nodeOfElement, rectInNode } from '../core/elements';
+import { effectPad, effectParams, type Effect } from '../features/effects';
+import { Live, FAR_AWAY } from './live';
+import { saveDomState } from './dom-state';
 import {
   createGpuNode,
   isCurrentTile,
@@ -13,21 +14,21 @@ import {
   THUMBNAIL_SCALE,
   type GpuNode,
   type Tile,
-} from './gpu-node';
-import { Pages } from './gpu-pages';
-import { Planner } from './gpu-plan';
-import { Rasterizer, type Capture } from './gpu-raster';
-import { CompositeRenderer } from './gpu-renderer';
-import { markSurface } from './input';
+} from './node';
+import { Pages } from './pages';
+import { Planner } from './plan';
+import { Rasterizer, type Capture } from './raster';
+import { CompositeRenderer } from './renderer';
+import { markSurface } from '../core/input';
 import type { Page } from './page';
-import { intersects, type Rect } from './rect';
+import { intersects, type Rect } from '../core/rect';
 import {
   DEFAULT_SELECTION_COLOR,
   HOVER_WIDTH,
   SELECTION_WIDTH,
   type GpuCanvas,
   type GpuCanvasOptions,
-} from './types';
+} from '../types';
 
 /** How long the camera must rest before blurry snapshots are upgraded. */
 const SETTLE_MS = 120;
@@ -105,8 +106,7 @@ export async function createGpuCanvas(
     () => {
       lastCameraChange = performance.now();
       // A moving canvas has no hover; the node under a still pointer becomes live once it rests.
-      live.set(null);
-      live.position();
+      live.cameraMoved();
       clearTimeout(settleTimer);
       settleTimer = window.setTimeout(() => {
         live.pick();
@@ -151,6 +151,9 @@ export async function createGpuCanvas(
       order() {
         live.reorder();
         schedule();
+      },
+      show(node) {
+        node.page.setDrawable(true, frameNumber);
       },
       remove(node) {
         live.forget(node);
@@ -291,13 +294,20 @@ export async function createGpuCanvas(
 
   /**
    * Moves a node to another page with `move`. The page it left is released from hit testing and
-   * parked unless something else holds it. The pointer did not move, so a live node is live again.
+   * parked unless something else holds it. Focus, text selection and scroll offsets inside the node
+   * survive the move. The pointer did not move, so a live node is live again.
    */
   const relocate = (node: GpuNode, move: () => void) => {
     const wasLive = live.current === node;
     if (wasLive) live.set(null);
     const previous = node.page;
+    const restore = saveDomState(node.element);
     move();
+    if (restore) {
+      // A parked page skips its contents: nothing in it can take focus or scroll.
+      node.page.setDrawable(true, frameNumber);
+      restore();
+    }
     if (pages.has(previous) && !isPinned(previous)) {
       live.unpin(previous);
       previous.setDrawable(false, frameNumber);

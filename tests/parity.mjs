@@ -12,16 +12,18 @@ html,body{margin:0}#host{width:100vw;height:100vh}
 .spinner{position:absolute;left:240px;top:20px;width:36px;height:36px;border:6px solid #ddd;border-top-color:#222;border-radius:50%;animation:spin 800ms linear infinite}
 </style></head><body><div id="host"></div><button id="outside">Outside</button><script type="module">
 import {createGpuCanvas} from '/index.js';
-const mode = new URL(location.href).searchParams.get('mode');
-const canvas=await createGpuCanvas(document.getElementById('host'),{mode,input:false});
+const params = new URL(location.href).searchParams;
+const mode = params.get('mode');
+const input = params.has('library-input');
+const canvas=await createGpuCanvas(document.getElementById('host'),{mode,input});
 const a=document.createElement('div');a.style.background='white';
 a.innerHTML='<button id="increment" style="position:absolute;left:20px;top:20px">Increment</button><input aria-label="Name" style="position:absolute;left:20px;top:80px"><div class="spinner"></div>';
 const b=document.createElement('div');b.style.background='coral';
 b.innerHTML='<button id="next" style="position:absolute;left:20px;top:20px">Next node</button>';
 let clicks=0;a.querySelector('button').onclick=()=>clicks++;
 const first={x:100,y:150,width:320,height:240};
-canvas.addNode(a,first);canvas.addNode(b,{...first,x:500});
-canvas.setLiveNodes([a,b]);
+canvas.addNode(a,first);canvas.addNode(b,{...first,x:input?1600:500});
+if (!input) canvas.setLiveNodes([a,b]);
 window.fixture={canvas,a,b,first,clicks:()=>clicks};
 </script></body></html>`;
 const server = createServer(async (request, response) => {
@@ -71,6 +73,13 @@ try {
     }
     await page.locator('#increment').click();
     assert.equal(await page.evaluate(() => window.fixture.clicks()), 1);
+    const hostOwnsInput = await page.evaluate(() => {
+      const button = document.querySelector('#increment');
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+      const wheel = new WheelEvent('wheel', { deltaY: 50, bubbles: true, cancelable: true });
+      return button.dispatchEvent(tab) && button.dispatchEvent(wheel);
+    });
+    assert(hostOwnsInput, 'input:false left a library key or wheel handler active');
     const input = page.getByLabel('Name', { exact: true });
     await input.click();
     await input.pressSequentially('Retained input');
@@ -87,10 +96,24 @@ try {
     });
     await expect(input).toBeFocused();
     await expect(input).toHaveValue('Retained input');
-    await page.evaluate(() => {
+    const resizeBlurs = await input.evaluate((element) => {
       const { canvas, a, first } = window.fixture;
-      canvas.updateNode(a, { ...first, width: 360, height: 280 });
+      let blurs = 0;
+      const onBlur = () => blurs++;
+      element.setSelectionRange(2, 8);
+      element.addEventListener('blur', onBlur);
+      try {
+        canvas.updateNode(a, { ...first, width: 360, height: 280 });
+      } finally {
+        element.removeEventListener('blur', onBlur);
+      }
+      return blurs;
     });
+    assert.equal(resizeBlurs, 0, 'Resizing a retained input dispatched blur');
+    assert.deepEqual(
+      await input.evaluate((element) => [element.selectionStart, element.selectionEnd]),
+      [2, 8],
+    );
     await expect(input).toBeFocused();
     await expect(input).toHaveValue('Retained input');
     await page.locator('#increment').click();
@@ -168,6 +191,44 @@ try {
     await page.evaluate(() => window.fixture.canvas.destroy());
     await page.close();
   }
+
+  const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+  await page.goto('http://localhost:' + address.port + '/?mode=gpu&library-input');
+  await page.waitForFunction(() => window.fixture?.canvas.getStats().visible === 1);
+  const input = page.getByLabel('Name', { exact: true });
+  // The unretained source only gets native geometry when the pointer reaches it.
+  await page.mouse.move(150, 240);
+  await input.click({ timeout: 5000 });
+  await page.mouse.move(950, 650);
+  await page.evaluate(() => {
+    const { canvas, a } = window.fixture;
+    canvas.setNodeOrder([a]);
+    canvas.addCameraListener((camera) => {
+      window.revealedCamera = camera;
+    });
+  });
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#next')).toBeFocused();
+  const camera = await page.evaluate(() => window.revealedCamera);
+  assert(
+    camera?.x > 0 && camera.zoom === 1,
+    'Tab did not reveal the parked field at the current zoom',
+  );
+  await page.keyboard.press('Shift+Tab');
+  await expect(input).toBeFocused();
+  await page.evaluate(() => window.fixture.canvas.setCamera({ x: 30, y: 20, zoom: 0.5 }));
+  const bounds = await input.boundingBox();
+  assert(bounds);
+  assert(Math.abs(bounds.x - 45) < 1 && Math.abs(bounds.y - 105) < 1, JSON.stringify(bounds));
+  console.log(
+    JSON.stringify({
+      builtInTabFollowsInsertion: true,
+      focusedGeometry: true,
+      cameraListener: true,
+    }),
+  );
+  await page.evaluate(() => window.fixture.canvas.destroy());
+  await page.close();
 } finally {
   await browser.close();
   await new Promise((resolve) => server.close(resolve));

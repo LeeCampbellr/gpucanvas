@@ -1,4 +1,4 @@
-import type { Rect } from './rect';
+import type { Rect } from '../core/rect';
 
 /**
  * Draws `region` of `source`, a drawable element, into a `width` x `height` texture of its own
