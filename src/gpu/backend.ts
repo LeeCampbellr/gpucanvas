@@ -4,6 +4,7 @@ import { screenToWorld } from '../core/camera';
 import { nodeOfElement, rectInNode } from '../core/elements';
 import { effectPad, effectParams, type Effect } from '../features/effects';
 import { Live, FAR_AWAY } from './live';
+import { saveDomState } from './dom-state';
 import {
   createGpuNode,
   isCurrentTile,
@@ -280,13 +281,20 @@ export async function createGpuCanvas(
 
   /**
    * Moves a node to another page with `move`. The page it left is released from hit testing and
-   * parked unless something else holds it. The pointer did not move, so a live node is live again.
+   * parked unless something else holds it. Focus, text selection and scroll offsets inside the node
+   * survive the move. The pointer did not move, so a live node is live again.
    */
   const relocate = (node: GpuNode, move: () => void) => {
     const wasLive = live.current === node;
     if (wasLive) live.set(null);
     const previous = node.page;
+    const restore = saveDomState(node.element);
     move();
+    if (restore) {
+      // A parked page skips its contents: nothing in it can take focus or scroll.
+      node.page.setDrawable(true, frameNumber);
+      restore();
+    }
     if (pages.has(previous) && !isPinned(previous)) {
       live.unpin(previous);
       previous.setDrawable(false, frameNumber);
